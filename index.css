@@ -1,0 +1,380 @@
+:root {
+  --primary-color: #2c3e50;
+  --secondary-color: #34495e;
+  --accent-color: #1abc9c;
+  --accent-hover-color: #16a085;
+  --background-color: #ecf0f1;
+  --surface-color: #ffffff;
+  --text-color: #2c3e50;
+  --light-text-color: #ffffff;
+  --danger-color: #e74c3c;
+  --border-color: #bdc3c7;
+  --positive-color: #27ae60;
+  --negative-color: #c0392b;
+  --invoice-color: #2980b9;
+  
+  /* Safe area insets for iOS */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  /* Use native system fonts for an authentic feel */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+  -webkit-tap-highlight-color: transparent; /* Disable tap highlight */
+  -webkit-overflow-scrolling: touch; /* Enable momentum scrolling */
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  width: 100%;
+  /* Adjust padding to account for the taller bottom nav bar */
+  padding-bottom: calc(80px + var(--safe-area-inset-bottom));
+}
+
+header {
+  background-color: var(--primary-color);
+  color: var(--light-text-color);
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  /* Add padding for the notch/status bar area */
+  padding-top: calc(20px + var(--safe-area-inset-top));
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5rem; /* Slightly smaller for mobile */
+}
+
+.list-container {
+  display: grid;
+  gap: 15px;
+}
+
+.empty-state {
+  text-align: center;
+  margin-top: 50px;
+  color: #7f8c8d;
+}
+
+.trip-card, .expense-card {
+  background-color: var(--surface-color);
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 5px solid var(--accent-color);
+}
+
+.expense-card {
+    border-left-color: #3498db;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+.card-payment {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.card-payment.cash {
+  color: var(--positive-color);
+}
+
+.card-payment.invoice {
+  color: var(--invoice-color);
+}
+
+.expense-amount {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  color: var(--danger-color);
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 5px;
+  line-height: 1;
+}
+.delete-btn:hover {
+  opacity: 0.8;
+}
+
+.add-fab {
+  position: fixed;
+  /* Adjust bottom position to respect safe area */
+  bottom: calc(80px + var(--safe-area-inset-bottom));
+  right: 30px;
+  width: 60px;
+  height: 60px;
+  background-color: var(--accent-color);
+  color: var(--light-text-color);
+  border: none;
+  border-radius: 50%;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  z-index: 999;
+}
+
+.add-fab:hover {
+  background-color: var(--accent-hover-color);
+  transform: scale(1.05);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: var(--surface-color);
+  padding: 30px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.radio-group {
+    display: flex;
+    gap: 15px;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 30px;
+}
+
+.modal-actions button {
+  padding: 10px 20px;
+  border-radius: 4px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--accent-color);
+  color: var(--light-text-color);
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-hover-color);
+}
+
+.btn-secondary {
+  background-color: #bdc3c7;
+  color: var(--primary-color);
+}
+
+.btn-secondary:hover {
+  background-color: #95a5a6;
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    /* Adjust height and padding for the home bar */
+    height: calc(60px + var(--safe-area-inset-bottom));
+    padding-bottom: var(--safe-area-inset-bottom);
+    background-color: var(--primary-color);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+    z-index: 100;
+}
+
+.nav-btn {
+    background: none;
+    border: none;
+    color: #bdc3c7;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 10px;
+    flex-grow: 1;
+    height: 100%;
+    transition: color 0.2s, background-color 0.2s;
+    /* Remove default padding bottom from button itself */
+    padding-bottom: 10px; 
+}
+
+.nav-btn.active {
+    color: var(--accent-color);
+    border-bottom: 3px solid var(--accent-color);
+}
+
+.nav-btn:hover:not(.active) {
+    color: var(--light-text-color);
+}
+
+
+/* Statistics Styles */
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.stat-card {
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.stat-card h3 {
+    margin: 0 0 10px;
+    font-size: 1rem;
+    color: var(--secondary-color);
+}
+
+.stat-card .amount {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.stat-card .amount.positive {
+    color: var(--positive-color);
+}
+
+.stat-card .amount.negative {
+    color: var(--negative-color);
+}
+
+.stat-card .amount.invoice {
+    color: var(--invoice-color);
+}
+
+.stat-card .amount.boss {
+    color: var(--secondary-color);
+}
+
+.stat-card.large {
+    grid-column: 1 / -1; /* Span full width */
+    padding: 30px;
+}
+
+.stat-card.large .amount {
+    font-size: 2.5rem;
+}
+
+.stat-card.profit {
+    border-top: 5px solid var(--positive-color);
+}
+
+.stat-card.profit .amount {
+    color: var(--positive-color);
+}
+
+.stat-card.loss {
+    border-top: 5px solid var(--negative-color);
+}
+.stat-card.loss .amount {
+    color: var(--negative-color);
+}
+
+@media (max-width: 600px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .stat-card.large {
+        grid-column: auto;
+    }
+}

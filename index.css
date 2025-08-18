@@ -1,3 +1,4 @@
+
 :root {
   --primary-color: #2c3e50;
   --secondary-color: #34495e;
@@ -55,7 +56,6 @@ header {
   background-color: var(--primary-color);
   color: var(--light-text-color);
   padding: 20px;
-  text-align: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   position: sticky;
   top: 0;
@@ -64,9 +64,32 @@ header {
   padding-top: calc(20px + var(--safe-area-inset-top));
 }
 
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
 header h1 {
   margin: 0;
   font-size: 1.5rem; /* Slightly smaller for mobile */
+}
+
+.logout-btn {
+    background-color: var(--secondary-color);
+    color: var(--light-text-color);
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.logout-btn:hover {
+    background-color: #e74c3c;
 }
 
 .list-container {
@@ -89,6 +112,12 @@ header h1 {
   flex-direction: column;
   gap: 10px;
   border-left: 5px solid var(--accent-color);
+  transition: all 0.2s ease-in-out;
+}
+
+.trip-card.settled, .expense-card.reimbursed {
+  border-left-color: var(--positive-color);
+  background-color: #f1fef5;
 }
 
 .expense-card {
@@ -103,6 +132,56 @@ header h1 {
     font-weight: 500;
 }
 
+.card-path {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.license-plate-badge {
+  display: inline-block;
+  background-color: var(--secondary-color);
+  color: var(--light-text-color);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.card-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-top: 10px;
+    margin-top: 10px;
+    border-top: 1px solid var(--background-color);
+}
+
+.detail-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #e9ecef;
+    color: var(--secondary-color);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.card-notes {
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  border-left: 3px solid #bdc3c7;
+}
+.card-notes p {
+  margin: 0;
+}
+
+
 .card-payment {
   font-size: 1rem;
   font-weight: bold;
@@ -114,6 +193,35 @@ header h1 {
 
 .card-payment.invoice {
   color: var(--invoice-color);
+}
+
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 15px;
+  margin-top: 15px;
+  border-top: 1px solid var(--background-color);
+}
+    
+.settle-btn, .reimburse-btn {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.settle-btn:hover:not(:disabled), .reimburse-btn:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+.settle-btn:disabled, .reimburse-btn:disabled {
+  background-color: var(--positive-color);
+  cursor: default;
 }
 
 .expense-amount {
@@ -173,6 +281,8 @@ header h1 {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  overflow-y: auto;
+  padding: 20px 0;
 }
 
 .modal-content {
@@ -190,6 +300,12 @@ header h1 {
   text-align: center;
 }
 
+.modal-content p {
+  margin-bottom: 20px;
+  line-height: 1.5;
+  color: var(--secondary-color);
+}
+
 .form-group {
   margin-bottom: 20px;
 }
@@ -201,15 +317,43 @@ header h1 {
 }
 
 .form-group input[type="text"],
-.form-group input[type="number"] {
+.form-group input[type="number"],
+.form-group input[type="password"],
+.form-group input[type="url"],
+.form-group select,
+.form-group textarea {
   width: 100%;
   padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 1rem;
+  font-family: inherit;
+  background-color: #fff;
+  color: var(--text-color);
 }
 
-.form-group input:focus {
+.form-group textarea {
+    resize: vertical;
+}
+
+.form-group select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%232c3e50%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+}
+
+.form-group select option {
+  background: var(--surface-color);
+  color: var(--text-color);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
   outline: none;
   border-color: var(--accent-color);
 }
@@ -225,6 +369,39 @@ header h1 {
     gap: 5px;
     cursor: pointer;
 }
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: normal;
+    margin: 0;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--accent-color);
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: #7f8c8d;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
 
 .modal-actions {
   display: flex;
@@ -261,6 +438,16 @@ header h1 {
   background-color: #95a5a6;
 }
 
+.btn-danger {
+  background-color: var(--danger-color);
+  color: var(--light-text-color);
+}
+
+.btn-danger:hover {
+  background-color: var(--negative-color);
+}
+
+
 /* Bottom Navigation */
 .bottom-nav {
     position: fixed;
@@ -282,7 +469,7 @@ header h1 {
     background: none;
     border: none;
     color: #bdc3c7;
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
     padding: 10px;
@@ -346,6 +533,10 @@ header h1 {
     color: var(--secondary-color);
 }
 
+.stat-card .amount.boss.negative {
+    color: var(--positive-color); /* If boss owes user, show it as a "good" color */
+}
+
 .stat-card.large {
     grid-column: 1 / -1; /* Span full width */
     padding: 30px;
@@ -369,6 +560,65 @@ header h1 {
 .stat-card.loss .amount {
     color: var(--negative-color);
 }
+
+.settle-all-card {
+    background-color: #e8f4fd;
+    border-top: 5px solid var(--invoice-color);
+}
+
+.settle-all-card p {
+    margin: 10px 0;
+    color: var(--secondary-color);
+    font-size: 0.9rem;
+}
+
+.settle-all-btn {
+    margin-top: 10px;
+    width: 100%;
+    max-width: 250px;
+}
+
+/* Authentication Screen Styles */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    background-color: var(--primary-color);
+}
+
+.auth-form {
+    background-color: var(--surface-color);
+    padding: 40px;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.auth-form h2 {
+    margin-bottom: 10px;
+}
+.auth-form p {
+    margin-bottom: 25px;
+    color: #7f8c8d;
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    margin-top: 10px;
+}
+
+.auth-error {
+    color: var(--danger-color);
+    margin-bottom: 15px;
+    font-size: 0.9rem;
+}
+
 
 @media (max-width: 600px) {
     .stats-grid {

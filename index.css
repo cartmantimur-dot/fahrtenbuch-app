@@ -1,4 +1,3 @@
-
 :root {
   --primary-color: #2c3e50;
   --secondary-color: #34495e;
@@ -13,6 +12,8 @@
   --positive-color: #27ae60;
   --negative-color: #c0392b;
   --invoice-color: #2980b9;
+  --warning-color: #f39c12;
+  --warning-bg-color: #fef5e7;
   
   /* Safe area insets for iOS */
   --safe-area-inset-top: env(safe-area-inset-top, 0px);
@@ -28,13 +29,12 @@
 }
 
 html, body {
-  /* Use native system fonts for an authentic feel */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   background-color: var(--background-color);
   color: var(--text-color);
   line-height: 1.6;
-  -webkit-tap-highlight-color: transparent; /* Disable tap highlight */
-  -webkit-overflow-scrolling: touch; /* Enable momentum scrolling */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 #root {
@@ -43,12 +43,14 @@ html, body {
   min-height: 100vh;
 }
 
-.app-container {
+.app-container, .boss-container {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
   width: 100%;
-  /* Adjust padding to account for the taller bottom nav bar */
+}
+
+.app-container {
   padding-bottom: calc(80px + var(--safe-area-inset-bottom));
 }
 
@@ -60,7 +62,6 @@ header {
   position: sticky;
   top: 0;
   z-index: 100;
-  /* Add padding for the notch/status bar area */
   padding-top: calc(20px + var(--safe-area-inset-top));
 }
 
@@ -74,10 +75,16 @@ header {
 
 header h1 {
   margin: 0;
-  font-size: 1.5rem; /* Slightly smaller for mobile */
+  font-size: 1.5rem;
 }
 
-.logout-btn {
+.header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.header-btn, .logout-btn {
     background-color: var(--secondary-color);
     color: var(--light-text-color);
     border: none;
@@ -88,8 +95,15 @@ header h1 {
     transition: background-color 0.2s ease;
 }
 
+.header-btn {
+    background-color: var(--accent-color);
+}
+.header-btn:hover {
+    background-color: var(--accent-hover-color);
+}
+
 .logout-btn:hover {
-    background-color: #e74c3c;
+    background-color: var(--danger-color);
 }
 
 .list-container {
@@ -103,7 +117,7 @@ header h1 {
   color: #7f8c8d;
 }
 
-.trip-card, .expense-card {
+.trip-card, .expense-card, .assigned-trip-card {
   background-color: var(--surface-color);
   border-radius: 8px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.05);
@@ -114,6 +128,27 @@ header h1 {
   border-left: 5px solid var(--accent-color);
   transition: all 0.2s ease-in-out;
 }
+
+.assigned-trip-card {
+    border-left-color: var(--invoice-color);
+}
+
+.trip-reminder-highlight {
+    border-left-color: var(--warning-color);
+    background-color: var(--warning-bg-color);
+}
+
+.assigned-trips-section {
+    margin-bottom: 30px;
+}
+
+.assigned-trips-section h3 {
+    margin-bottom: 15px;
+    color: var(--secondary-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 5px;
+}
+
 
 .trip-card.settled, .expense-card.reimbursed {
   border-left-color: var(--positive-color);
@@ -199,6 +234,7 @@ header h1 {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 10px;
   padding-top: 15px;
   margin-top: 15px;
   border-top: 1px solid var(--background-color);
@@ -245,7 +281,6 @@ header h1 {
 
 .add-fab {
   position: fixed;
-  /* Adjust bottom position to respect safe area */
   bottom: calc(80px + var(--safe-area-inset-bottom));
   right: 30px;
   width: 60px;
@@ -425,8 +460,13 @@ header h1 {
   color: var(--light-text-color);
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background-color: var(--accent-hover-color);
+}
+
+.btn-primary:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -434,8 +474,12 @@ header h1 {
   color: var(--primary-color);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background-color: #95a5a6;
+}
+.btn-secondary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 .btn-danger {
@@ -454,7 +498,6 @@ header h1 {
     bottom: 0;
     left: 0;
     width: 100%;
-    /* Adjust height and padding for the home bar */
     height: calc(60px + var(--safe-area-inset-bottom));
     padding-bottom: var(--safe-area-inset-bottom);
     background-color: var(--primary-color);
@@ -476,7 +519,6 @@ header h1 {
     flex-grow: 1;
     height: 100%;
     transition: color 0.2s, background-color 0.2s;
-    /* Remove default padding bottom from button itself */
     padding-bottom: 10px; 
 }
 
@@ -534,11 +576,11 @@ header h1 {
 }
 
 .stat-card .amount.boss.negative {
-    color: var(--positive-color); /* If boss owes user, show it as a "good" color */
+    color: var(--positive-color);
 }
 
 .stat-card.large {
-    grid-column: 1 / -1; /* Span full width */
+    grid-column: 1 / -1;
     padding: 30px;
 }
 
@@ -619,6 +661,327 @@ header h1 {
     font-size: 0.9rem;
 }
 
+.auth-switch-text {
+    margin-top: 20px;
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+}
+
+.auth-switch-button {
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: inherit;
+    font-family: inherit;
+    padding: 0;
+}
+
+.auth-switch-button:hover {
+    color: var(--accent-hover-color);
+}
+
+/* Archive Styles */
+.archive-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--background-color);
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+}
+
+.archive-header {
+    background-color: var(--primary-color);
+    color: var(--light-text-color);
+    padding: 20px;
+    padding-top: calc(20px + var(--safe-area-inset-top));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+}
+.archive-header h2 {
+  font-size: 1.2rem;
+}
+
+.archive-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+.archive-content h4 {
+  margin-top: 30px;
+  margin-bottom: 15px;
+  color: var(--secondary-color);
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 5px;
+}
+
+
+.archive-month-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.archive-month-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    width: 100%;
+    text-align: left;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    color: var(--text-color);
+}
+.archive-month-item:hover {
+  background-color: #f8f9fa;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.archive-month-item span:last-child {
+  font-weight: bold;
+  color: var(--positive-color);
+}
+
+.archive-summary-card {
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border-top: 5px solid var(--positive-color);
+    margin-bottom: 20px;
+}
+.archive-summary-card h3 {
+    margin: 0 0 10px;
+    font-size: 1rem;
+    color: var(--secondary-color);
+}
+.archive-summary-card .amount {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--positive-color);
+}
+
+/* Boss View Styles */
+.boss-container {
+    max-width: 900px;
+}
+
+.boss-month-section {
+    background-color: var(--surface-color);
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-bottom: 25px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.boss-month-section:hover {
+    background-color: #f8f9fa;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.07);
+}
+
+
+.boss-month-header {
+    background-color: var(--secondary-color);
+    color: var(--light-text-color);
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.boss-month-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.boss-month-total {
+    text-align: right;
+}
+
+.boss-month-total span {
+    opacity: 0.8;
+    font-size: 0.9rem;
+    margin-right: 10px;
+}
+
+.boss-month-total strong {
+    font-size: 1.2rem;
+}
+
+.boss-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    padding: 20px;
+}
+
+.boss-stats-table-container h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1rem;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 5px;
+}
+
+.boss-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.boss-stats-table th,
+.boss-stats-table td {
+    padding: 10px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.boss-stats-table th {
+    background-color: #f8f9fa;
+    font-weight: 500;
+}
+
+.boss-stats-table tr:last-child td {
+    border-bottom: none;
+}
+
+.boss-stats-table td:last-child {
+    text-align: right;
+    font-weight: bold;
+    color: var(--positive-color);
+}
+
+.boss-trip-card {
+    border-left-color: var(--secondary-color);
+}
+.boss-trip-date {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--secondary-color);
+}
+
+/* Cockpit Styles */
+.cockpit-section {
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+}
+.cockpit-section h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 10px;
+}
+.cockpit-empty {
+    color: #7f8c8d;
+}
+.cockpit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.cockpit-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+    border-left: 5px solid transparent;
+}
+.cockpit-item-warning {
+    border-left-color: var(--danger-color);
+    background-color: #fdf2f2;
+}
+.cockpit-item-declined {
+    border-left-color: var(--danger-color);
+    background-color: #fceae8;
+    opacity: 0.9;
+}
+.cockpit-item-main {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.cockpit-item-path {
+    font-weight: 500;
+}
+.cockpit-item-time, .cockpit-item-driver {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+}
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--light-text-color);
+}
+.status-pending {
+    background-color: var(--warning-color);
+}
+.status-accepted {
+    background-color: var(--positive-color);
+}
+.status-declined {
+    background-color: var(--danger-color);
+}
+
+
+/* Loading Indicator Styles */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background-color);
+  z-index: 2000;
+  font-size: 1.2rem;
+  color: var(--primary-color);
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: var(--accent-color);
+  margin-bottom: 20px;
+  animation: spin 1s ease infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 
 @media (max-width: 600px) {
     .stats-grid {
@@ -626,5 +989,8 @@ header h1 {
     }
     .stat-card.large {
         grid-column: auto;
+    }
+    .boss-stats-grid {
+        grid-template-columns: 1fr;
     }
 }

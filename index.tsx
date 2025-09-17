@@ -1147,9 +1147,6 @@ const App = ({ username, initialData, onLogout }: {
                                             <span className="license-plate-badge">{trip.licensePlate}</span>
                                             <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                                         </div>
-                                        <button onClick={() => handleDeleteTrip(trip.id)} className="delete-btn" aria-label="Fahrt löschen">
-                                            &times;
-                                        </button>
                                     </div>
                                     <div className="card-details">
                                         {trip.numberOfDrivers > 1 && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
@@ -1183,7 +1180,6 @@ const App = ({ username, initialData, onLogout }: {
                                 <div key={expense.id} className="expense-card">
                                     <div className="card-header">
                                         <span>{expense.description}</span>
-                                        <button onClick={() => handleDeleteExpense(expense.id)} className="delete-btn" aria-label="Ausgabe löschen">&times;</button>
                                     </div>
                                     <div className="expense-amount">{expense.amount.toFixed(2)} €</div>
                                     <div className="card-actions">

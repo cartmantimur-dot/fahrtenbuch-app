@@ -420,6 +420,7 @@ const SupportModal = ({ isOpen, onClose, onSubmit, openTrips }: {
             resetAndClose();
         } catch (err: any) {
             setError(err.message || 'Ein Fehler ist aufgetreten.');
+        } finally {
             setIsLoading(false);
         }
     };
@@ -699,11 +700,15 @@ Erwartetes JSON: {"start":"Blumenstr. 21","destination":"Westfalenhalle Dortmund
                 pickupTime: parsedData.pickupTime || ''
             };
 
-            await fetch(GOOGLE_SHEET_URL, {
+            const response = await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(payload)
             });
+
+            if (!response.ok) throw new Error("Server-Antwort war nicht OK.");
+            const result = await response.json();
+            if (result.status !== 'success') throw new Error(result.message);
             
             setMessageText('');
             setSelectedDriver('');
@@ -1097,11 +1102,12 @@ const App = ({ username, initialData, onLogout }: {
     setAssignedTrips(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     try {
         const payload = { dataType: 'update_assigned_trip_status', id, status };
-        await fetch(GOOGLE_SHEET_URL, {
+        const response = await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
+        if (!response.ok) throw new Error("Status-Update fehlgeschlagen");
     } catch (error) {
         console.error("Failed to update trip status:", error);
     }
@@ -1135,12 +1141,8 @@ const App = ({ username, initialData, onLogout }: {
             throw new Error(result.message || 'Fehler beim Senden des Tickets.');
         }
     } catch (error: any) {
-        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-             console.error("Failed to send support ticket (network error):", error);
-             throw new Error("Netzwerkfehler: Das Ticket konnte nicht gesendet werden. Bitte Internetverbindung prüfen.");
-        }
         console.error("Failed to send support ticket:", error);
-        throw error;
+        throw new Error("Das Ticket konnte nicht gesendet werden. Bitte Internetverbindung prüfen.");
     }
   };
 

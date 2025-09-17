@@ -559,14 +559,17 @@ Erwartetes JSON: {"start":"Blumenstr. 21","destination":"Westfalenhalle Dortmund
         try {
             const parsedData = await parseTripWithAI(messageText);
             
+            const payload = {
+                dataType: 'assign_trip',
+                assignTo: selectedDriver,
+                ...parsedData,
+                pickupTime: parsedData.pickupTime || ''
+            };
+
             await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
-                body: JSON.stringify({
-                    dataType: 'assign_trip',
-                    assignTo: selectedDriver,
-                    ...parsedData,
-                    pickupTime: parsedData.pickupTime || ''
-                }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             
             setMessageText('');
@@ -755,6 +758,7 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                                 <div className="card-details">
                                     <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
                                 </div>
+                                {trip.notes && <div className="card-notes"><p>{trip.notes}</p></div>}
                                 <div className={`card-payment ${trip.payment.type}`}>
                                     Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
                                 </div>
@@ -907,10 +911,12 @@ const App = ({ username, initialData, onLogout }: {
   const syncTrip = async (trip: Trip) => {
     if (!GOOGLE_SHEET_URL) return;
     try {
-      await fetch(GOOGLE_SHEET_URL, {
-        method: 'POST',
-        body: JSON.stringify({ dataType: 'trip', ...trip, username }),
-      });
+        const payload = { dataType: 'trip', ...trip, username };
+        await fetch(GOOGLE_SHEET_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
     } catch (error) {
       console.error("Failed to sync trip:", error);
     }
@@ -919,10 +925,12 @@ const App = ({ username, initialData, onLogout }: {
   const syncExpense = async (expense: Expense) => {
     if (!GOOGLE_SHEET_URL) return;
     try {
-      await fetch(GOOGLE_SHEET_URL, {
-        method: 'POST',
-        body: JSON.stringify({ dataType: 'expense', ...expense, username }),
-      });
+        const payload = { dataType: 'expense', ...expense, username };
+        await fetch(GOOGLE_SHEET_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
     } catch (error) {
       console.error("Failed to sync expense:", error);
     }
@@ -931,9 +939,11 @@ const App = ({ username, initialData, onLogout }: {
   const updateAssignedTripStatus = async (id: string, status: 'accepted' | 'declined') => {
     setAssignedTrips(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     try {
+        const payload = { dataType: 'update_assigned_trip_status', id, status };
         await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            body: JSON.stringify({ dataType: 'update_assigned_trip_status', id, status, username }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
     } catch (error) {
         console.error("Failed to update trip status:", error);
@@ -954,11 +964,14 @@ const App = ({ username, initialData, onLogout }: {
     await syncTrip(newTrip);
 
     if (tripToStart) {
-        setAssignedTrips(prev => prev.filter(t => t.id !== tripToStart.id));
+        const tripToRemoveId = tripToStart.id;
+        setAssignedTrips(prev => prev.filter(t => t.id !== tripToRemoveId));
         try {
+            const payload = { dataType: 'remove_assigned_trip', id: tripToRemoveId };
             await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
-                body: JSON.stringify({ dataType: 'remove_assigned_trip', id: tripToStart.id, username }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
         } catch (error) {
             console.error("Failed to remove assigned trip:", error);
@@ -1398,14 +1411,19 @@ const AppContainer = () => {
             }
             
             try {
-                const response = await fetch(`${GOOGLE_SHEET_URL}?action=getData&user=${encodeURIComponent(currentUser)}`);
+                const url = new URL(GOOGLE_SHEET_URL);
+                url.searchParams.append('action', 'getData');
+                url.searchParams.append('user', currentUser);
+
+                const response = await fetch(url.toString());
+
                 if (!response.ok) throw new Error(`Serverfehler: ${response.statusText}`);
                 
                 const result = await response.json();
                 if (result.status === 'error') throw new Error(result.message);
                 
                 setAppData({
-                    trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, isSettled: t.isSettled || false })),
+                    trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, notes: t.Notizen || t.notes, isSettled: t.isSettled || false })),
                     expenses: (result.expenses || []).filter((e: any) => e && e.id).map((e: any) => ({ ...e, isReimbursed: e.isReimbursed || false })),
                     assignedTrips: (result.assignedTrips || []).filter((t: any) => t && t.id),
                     drivers: result.drivers || [],
@@ -1424,7 +1442,13 @@ const AppContainer = () => {
     const handleLogin = async (username: string, password: string) => {
         if (!GOOGLE_SHEET_URL) throw new Error("App ist nicht konfiguriert.");
         
-        const response = await fetch(`${GOOGLE_SHEET_URL}?action=login&user=${encodeURIComponent(username)}&pass=${encodeURIComponent(password)}`);
+        const url = new URL(GOOGLE_SHEET_URL);
+        url.searchParams.append('action', 'login');
+        url.searchParams.append('user', username);
+        url.searchParams.append('pass', password);
+
+        const response = await fetch(url.toString());
+
         if(!response.ok) throw new Error("Kommunikationsfehler mit dem Server.");
         
         const result = await response.json();
@@ -1439,9 +1463,16 @@ const AppContainer = () => {
     const handleRegister = async (username: string, password: string) => {
         if (!GOOGLE_SHEET_URL) throw new Error("App ist nicht konfiguriert.");
 
+        const payload = {
+            dataType: 'user_register',
+            username,
+            password
+        };
+
         const response = await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            body: JSON.stringify({ dataType: 'user_register', username, password }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
 
         if (!response.ok) throw new Error("Fehler bei der Registrierung.");

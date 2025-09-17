@@ -103,6 +103,13 @@ header h1 {
     background-color: var(--accent-hover-color);
 }
 
+.header-btn.support-btn {
+    background-color: var(--invoice-color);
+}
+.header-btn.support-btn:hover {
+    background-color: #2471a3;
+}
+
 .logout-btn:hover {
     background-color: var(--danger-color);
 }

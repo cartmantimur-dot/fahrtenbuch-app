@@ -382,6 +382,101 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmButto
   );
 };
 
+// --- SUPPORT MODAL ---
+const SupportModal = ({ isOpen, onClose, onSubmit, openTrips }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (message: string, attachedTripId: string) => Promise<void>;
+    openTrips: Trip[];
+}) => {
+    const [message, setMessage] = useState('');
+    const [selectedTripId, setSelectedTripId] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    if (!isOpen) {
+        return null;
+    }
+
+    const resetAndClose = () => {
+        setMessage('');
+        setSelectedTripId('');
+        setIsLoading(false);
+        setError('');
+        onClose();
+    };
+
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!message) {
+            setError('Bitte beschreiben Sie Ihr Problem.');
+            return;
+        }
+        setError('');
+        setIsLoading(true);
+        try {
+            await onSubmit(message, selectedTripId);
+            alert('Ihre Anfrage wurde erfolgreich gesendet!');
+            resetAndClose();
+        } catch (err: any) {
+            setError(err.message || 'Ein Fehler ist aufgetreten.');
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={resetAndClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Support kontaktieren</h2>
+                <p>Beschreiben Sie Ihr Problem. Sie erhalten eine Benachrichtigung per E-Mail, sobald Ihr Ticket erstellt wurde.</p>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label htmlFor="support-message">Ihre Nachricht</label>
+                        <textarea
+                            id="support-message"
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            rows={5}
+                            placeholder="Bitte beschreiben Sie das Problem so detailliert wie möglich..."
+                            required
+                            disabled={isLoading}
+                        ></textarea>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="support-trip-select">Fahrt anhängen (optional)</label>
+                        <select
+                            id="support-trip-select"
+                            value={selectedTripId}
+                            onChange={(e) => setSelectedTripId(e.target.value)}
+                            disabled={isLoading || openTrips.length === 0}
+                        >
+                            <option value="">{openTrips.length === 0 ? "Keine offenen Fahrten" : "Fahrt auswählen..."}</option>
+                            {openTrips.map(trip => (
+                                <option key={trip.id} value={trip.id}>
+                                    {trip.start} → {trip.destination}
+                                </option>
+                            ))}
+                        </select>
+                         <p className="form-hint">
+                            Wenn sich Ihr Problem auf eine bestimmte Fahrt bezieht, können Sie diese hier auswählen.
+                        </p>
+                    </div>
+                     {error && <p className="auth-error">{error}</p>}
+                    <div className="modal-actions">
+                        <button type="button" className="btn-secondary" onClick={resetAndClose} disabled={isLoading}>
+                            Abbrechen
+                        </button>
+                        <button type="submit" className="btn-primary" disabled={isLoading}>
+                            {isLoading ? 'Senden...' : 'Anfrage senden'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
 const formatMonth = (key: string) => {
     const [year, monthNum] = key.split('-');
     const monthIndex = parseInt(monthNum, 10) - 1;
@@ -606,7 +701,7 @@ Erwartetes JSON: {"start":"Blumenstr. 21","destination":"Westfalenhalle Dortmund
 
             await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(payload)
             });
             
@@ -940,6 +1035,7 @@ const App = ({ username, initialData, onLogout }: {
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToStart, setTripToStart] = useState<AssignedTrip | null>(null);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<'trips' | 'expenses' | 'stats'>('trips');
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -955,13 +1051,22 @@ const App = ({ username, initialData, onLogout }: {
     if (!GOOGLE_SHEET_URL) return;
     try {
         const payload = { dataType: 'trip', ...trip, username };
-        await fetch(GOOGLE_SHEET_URL, {
+        const response = await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
-    } catch (error) {
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Serverfehler (${response.status}): ${errorText}`);
+        }
+        const result = await response.json();
+        if (result.status === 'error') {
+            throw new Error(result.message);
+        }
+    } catch (error: any) {
       console.error("Failed to sync trip:", error);
+      alert(`Die Fahrt konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Internetverbindung. Fehlermeldung: ${error.message}`);
     }
   };
 
@@ -969,13 +1074,22 @@ const App = ({ username, initialData, onLogout }: {
     if (!GOOGLE_SHEET_URL) return;
     try {
         const payload = { dataType: 'expense', ...expense, username };
-        await fetch(GOOGLE_SHEET_URL, {
+        const response = await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
-    } catch (error) {
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Serverfehler (${response.status}): ${errorText}`);
+        }
+        const result = await response.json();
+        if (result.status === 'error') {
+            throw new Error(result.message);
+        }
+    } catch (error: any) {
       console.error("Failed to sync expense:", error);
+      alert(`Die Ausgabe konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Internetverbindung. Fehlermeldung: ${error.message}`);
     }
   };
 
@@ -985,11 +1099,48 @@ const App = ({ username, initialData, onLogout }: {
         const payload = { dataType: 'update_assigned_trip_status', id, status };
         await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
     } catch (error) {
         console.error("Failed to update trip status:", error);
+    }
+  };
+
+  const handleSendSupportTicket = async (message: string, attachedTripId: string) => {
+    if (!GOOGLE_SHEET_URL) {
+        throw new Error("App ist nicht konfiguriert.");
+    }
+    try {
+        const payload = { 
+            dataType: 'support_ticket', 
+            username, 
+            message, 
+            attachedTripId 
+        };
+        const response = await fetch(GOOGLE_SHEET_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Support ticket submission failed:", response.status, errorText);
+            throw new Error(`Der Server hat mit einem Fehler geantwortet. Bitte versuchen Sie es später erneut.`);
+        }
+
+        const result = await response.json();
+        if (result.status === 'error') {
+            throw new Error(result.message || 'Fehler beim Senden des Tickets.');
+        }
+    } catch (error: any) {
+        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+             console.error("Failed to send support ticket (network error):", error);
+             throw new Error("Netzwerkfehler: Das Ticket konnte nicht gesendet werden. Bitte Internetverbindung prüfen.");
+        }
+        console.error("Failed to send support ticket:", error);
+        throw error;
     }
   };
 
@@ -1013,7 +1164,7 @@ const App = ({ username, initialData, onLogout }: {
             const payload = { dataType: 'remove_assigned_trip', id: tripToRemoveId };
             await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(payload)
             });
         } catch (error) {
@@ -1285,6 +1436,7 @@ const App = ({ username, initialData, onLogout }: {
             <div className="header-content">
                 <h1>Fahrtenbuch</h1>
                 <div className="header-actions">
+                    <button className="header-btn support-btn" onClick={() => setIsSupportModalOpen(true)}>Support</button>
                     <button className="header-btn" onClick={() => setIsArchiveOpen(true)}>Archiv</button>
                     <button className="logout-btn" onClick={onLogout}>Logout</button>
                 </div>
@@ -1300,6 +1452,12 @@ const App = ({ username, initialData, onLogout }: {
         <AddExpenseModal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} onSave={handleAddExpense} />
         <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} {...confirmModalProps} />
         {isArchiveOpen && <ArchiveView trips={trips} expenses={expenses} onClose={() => setIsArchiveOpen(false)} />}
+        <SupportModal 
+            isOpen={isSupportModalOpen} 
+            onClose={() => setIsSupportModalOpen(false)} 
+            onSubmit={handleSendSupportTicket} 
+            openTrips={openTrips} 
+        />
     </>
   );
 };
@@ -1521,7 +1679,7 @@ const AppContainer = () => {
 
         const response = await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
 

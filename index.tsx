@@ -13,6 +13,7 @@ const LICENSE_PLATES = [
 ];
 
 const GOOGLE_SHEET_URL: string = 'https://script.google.com/macros/s/AKfycbwnvIj19oSB-UY_dZ2_EbSsg_7G7O6LH-UFfhs7_bDB5Fsq35-jFpdxsG7oCqdoHzolvg/exec';
+const OWN_ACCOUNT_PREFIX = '[OWN_ACCOUNT]';
 
 // --- INTERFACES ---
 interface Trip {
@@ -50,6 +51,11 @@ interface AssignedTrip {
     status: 'pending' | 'accepted' | 'declined';
 }
 
+// Helper functions for own account trips
+const isOwnAccountTrip = (trip: Trip): boolean => trip.notes?.startsWith(OWN_ACCOUNT_PREFIX) ?? false;
+const getDisplayNotes = (trip: Trip): string | undefined => trip.notes?.replace(OWN_ACCOUNT_PREFIX, '').trim();
+
+
 // The modal component for adding a new trip
 const AddTripModal = ({ isOpen, onClose, onSave, initialData }: { 
     isOpen: boolean, 
@@ -65,6 +71,7 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
   const [numberOfDrivers, setNumberOfDrivers] = useState('1');
   const [iCollectedPayment, setICollectedPayment] = useState(true);
   const [notes, setNotes] = useState('');
+  const [isOwnAccount, setIsOwnAccount] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -89,15 +96,18 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
     setNumberOfDrivers('1');
     setICollectedPayment(true);
     setNotes('');
+    setIsOwnAccount(false);
     onClose();
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!licensePlate || !start || !destination || !amount || !numberOfDrivers) {
+    if (!licensePlate || !start || !destination || !amount) {
       alert('Bitte alle erforderlichen Felder ausfüllen.');
       return;
     }
+
+    const finalNumberOfDrivers = isOwnAccount ? 1 : parseInt(numberOfDrivers, 10);
 
     onSave({
       licensePlate,
@@ -107,9 +117,9 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
         type: paymentType,
         amount: parseFloat(amount),
       },
-      numberOfDrivers: parseInt(numberOfDrivers, 10),
-      iCollectedPayment: parseInt(numberOfDrivers, 10) === 1 ? true : iCollectedPayment,
-      notes,
+      numberOfDrivers: finalNumberOfDrivers,
+      iCollectedPayment: isOwnAccount ? true : (finalNumberOfDrivers === 1 ? true : iCollectedPayment),
+      notes: isOwnAccount ? `${OWN_ACCOUNT_PREFIX}${notes}` : notes,
     });
     
     resetAndClose();
@@ -191,35 +201,57 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
                 </label>
             </div>
           </div>
-          <div className="form-group">
-            <label htmlFor="num-drivers">Beteiligte Fahrer</label>
-            <input
-              type="number"
-              id="num-drivers"
-              min="1"
-              step="1"
-              value={numberOfDrivers}
-              onChange={(e) => setNumberOfDrivers(e.target.value)}
-              required
-            />
-          </div>
 
-          {parseInt(numberOfDrivers, 10) > 1 && (
-            <div className="form-group">
+          <div className="form-group">
               <div className="checkbox-group">
                   <label>
                       <input
                       type="checkbox"
-                      checked={iCollectedPayment}
-                      onChange={(e) => setICollectedPayment(e.target.checked)}
+                      checked={isOwnAccount}
+                      onChange={(e) => setIsOwnAccount(e.target.checked)}
                       />
-                      Ich habe den Gesamtbetrag kassiert
+                      Fahrt auf eigene Rechnung
                   </label>
               </div>
                <p className="form-hint">
-                Für eine Hin- und Rückfahrt mit zwei Fahrern: Tragen Sie 2 Fahrer und den Gesamtbetrag ein. Nur der Fahrer, der das Geld erhalten hat, markiert diese Box.
+                Wenn aktiviert, wird der Betrag zu 100% als Ihr Verdienst gezählt und nicht mit dem Chef geteilt.
               </p>
-            </div>
+          </div>
+
+
+          {!isOwnAccount && (
+            <>
+                <div className="form-group">
+                    <label htmlFor="num-drivers">Beteiligte Fahrer</label>
+                    <input
+                    type="number"
+                    id="num-drivers"
+                    min="1"
+                    step="1"
+                    value={numberOfDrivers}
+                    onChange={(e) => setNumberOfDrivers(e.target.value)}
+                    required
+                    />
+                </div>
+
+                {parseInt(numberOfDrivers, 10) > 1 && (
+                    <div className="form-group">
+                    <div className="checkbox-group">
+                        <label>
+                            <input
+                            type="checkbox"
+                            checked={iCollectedPayment}
+                            onChange={(e) => setICollectedPayment(e.target.checked)}
+                            />
+                            Ich habe den Gesamtbetrag kassiert
+                        </label>
+                    </div>
+                    <p className="form-hint">
+                        Für eine Hin- und Rückfahrt mit zwei Fahrern: Tragen Sie 2 Fahrer und den Gesamtbetrag ein. Nur der Fahrer, der das Geld erhalten hat, markiert diese Box.
+                    </p>
+                    </div>
+                )}
+            </>
           )}
           
           <div className="form-group">
@@ -393,7 +425,10 @@ const ArchiveView = ({ trips, expenses, onClose }: { trips: Trip[], expenses: Ex
 
             if ('licensePlate' in item) { // It's a Trip
                 acc[monthKey].trips.push(item);
-                acc[monthKey].totalEarnings += (item.payment.amount * 0.5) / item.numberOfDrivers;
+                const earnings = isOwnAccountTrip(item) 
+                    ? item.payment.amount 
+                    : (item.payment.amount * 0.5) / item.numberOfDrivers;
+                acc[monthKey].totalEarnings += earnings;
             } else { // It's an Expense
                 acc[monthKey].expenses.push(item);
             }
@@ -428,20 +463,23 @@ const ArchiveView = ({ trips, expenses, onClose }: { trips: Trip[], expenses: Ex
             </div>
             
             {monthData.trips.length > 0 && <h4>Abgerechnete Fahrten</h4>}
-            {monthData.trips.map(trip => (
-                <div key={trip.id} className="trip-card settled">
-                    <div className="card-header">
-                        <div className="card-path">
-                            <span className="license-plate-badge">{trip.licensePlate}</span>
-                            <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+            {monthData.trips.map(trip => {
+                const displayNotes = getDisplayNotes(trip);
+                return (
+                    <div key={trip.id} className="trip-card settled">
+                        <div className="card-header">
+                            <div className="card-path">
+                                <span className="license-plate-badge">{trip.licensePlate}</span>
+                                <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                            </div>
+                        </div>
+                         {displayNotes && <div className="card-notes"><p>{displayNotes}</p></div>}
+                        <div className="card-payment">
+                           {`Einnahme: ${trip.payment.amount.toFixed(2)} €`}
                         </div>
                     </div>
-                    {trip.notes && <div className="card-notes"><p>{trip.notes}</p></div>}
-                    <div className="card-payment">
-                       {`Einnahme: ${trip.payment.amount.toFixed(2)} €`}
-                    </div>
-                </div>
-            ))}
+                )
+            })}
 
             {monthData.expenses.length > 0 && <h4>Erstattete Ausgaben</h4>}
             {monthData.expenses.map(expense => (
@@ -664,7 +702,9 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     }, []);
 
     const statsByMonth = useMemo(() => {
-        const groupedByMonth = trips.reduce((acc, trip) => {
+        const companyTrips = trips.filter(trip => !isOwnAccountTrip(trip));
+
+        const groupedByMonth = companyTrips.reduce((acc, trip) => {
             const dateString = trip.id.substring(0, 24);
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return acc;
@@ -746,24 +786,27 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                 </header>
                 <main className="boss-container">
                     <div className="list-container">
-                        {monthData.trips.map(trip => (
-                             <div key={trip.id} className="trip-card boss-trip-card">
-                                <div className="card-header">
-                                    <div className="card-path">
-                                        <span className="license-plate-badge">{trip.licensePlate}</span>
-                                        <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                        {monthData.trips.map(trip => {
+                            const displayNotes = getDisplayNotes(trip);
+                            return (
+                                <div key={trip.id} className="trip-card boss-trip-card">
+                                    <div className="card-header">
+                                        <div className="card-path">
+                                            <span className="license-plate-badge">{trip.licensePlate}</span>
+                                            <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                                        </div>
+                                        <span className="boss-trip-date">{formatDate(trip.id)}</span>
                                     </div>
-                                    <span className="boss-trip-date">{formatDate(trip.id)}</span>
+                                    <div className="card-details">
+                                        <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
+                                    </div>
+                                    {displayNotes && <div className="card-notes"><p>{displayNotes}</p></div>}
+                                    <div className={`card-payment ${trip.payment.type}`}>
+                                        Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
+                                    </div>
                                 </div>
-                                <div className="card-details">
-                                    <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
-                                </div>
-                                {trip.notes && <div className="card-notes"><p>{trip.notes}</p></div>}
-                                <div className={`card-payment ${trip.payment.type}`}>
-                                    Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </main>
             </>
@@ -1077,7 +1120,14 @@ const App = ({ username, initialData, onLogout }: {
     const unreimbursedExpenses = expenses.filter(expense => !expense.isReimbursed);
     const openCashCollected = unsettledTrips.filter(t => t.payment.type === 'cash' && t.iCollectedPayment).reduce((s, t) => s + t.payment.amount, 0);
     const openInvoiceIssued = unsettledTrips.filter(t => t.payment.type === 'invoice' && t.iCollectedPayment).reduce((s, t) => s + t.payment.amount, 0);
-    const openUserShare = unsettledTrips.reduce((s, t) => s + (t.payment.amount * 0.5) / t.numberOfDrivers, 0);
+    
+    const openUserShare = unsettledTrips.reduce((s, t) => {
+        const earnings = isOwnAccountTrip(t)
+            ? t.payment.amount
+            : (t.payment.amount * 0.5) / t.numberOfDrivers;
+        return s + earnings;
+    }, 0);
+
     const openExpenses = unreimbursedExpenses.reduce((s, e) => s + e.amount, 0);
     const openMyEarnings = openUserShare;
     const amountToBoss = openCashCollected - openUserShare - openExpenses;
@@ -1140,7 +1190,10 @@ const App = ({ username, initialData, onLogout }: {
                         </div>
                     ) : openTrips.length > 0 && (
                         <div className="list-container">
-                            {openTrips.map(trip => (
+                            {openTrips.map(trip => {
+                                const ownAccount = isOwnAccountTrip(trip);
+                                const displayNotes = getDisplayNotes(trip);
+                                return (
                                 <div key={trip.id} className="trip-card">
                                     <div className="card-header">
                                         <div className="card-path">
@@ -1149,10 +1202,11 @@ const App = ({ username, initialData, onLogout }: {
                                         </div>
                                     </div>
                                     <div className="card-details">
-                                        {trip.numberOfDrivers > 1 && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
+                                        {ownAccount && (<span className="detail-badge own-account-badge">Eigene Rechnung</span>)}
+                                        {trip.numberOfDrivers > 1 && !ownAccount && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
                                         <span className="detail-badge">{trip.iCollectedPayment ? 'Bezahlung erhalten' : 'Bezahlung durch Kollegen'}</span>
                                     </div>
-                                    {trip.notes && (<div className="card-notes"><p>{trip.notes}</p></div>)}
+                                    {displayNotes && (<div className="card-notes"><p>{displayNotes}</p></div>)}
                                     <div className={`card-payment ${trip.payment.type}`}>
                                         {trip.payment.type === 'cash' ? `Bar erhalten: ${trip.payment.amount.toFixed(2)} €` : `Per Rechnung: ${trip.payment.amount.toFixed(2)} €`}
                                     </div>
@@ -1160,7 +1214,7 @@ const App = ({ username, initialData, onLogout }: {
                                       <button onClick={() => handleSettleTrip(trip.id)} className="settle-btn">Mit Chef abrechnen</button>
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     )}
                     <button className="add-fab" onClick={() => { setTripToStart(null); setIsTripModalOpen(true); }} aria-label="Fahrt hinzufügen">+</button>

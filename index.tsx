@@ -14,6 +14,10 @@ const LICENSE_PLATES = [
 
 const GOOGLE_SHEET_URL: string = 'https://script.google.com/macros/s/AKfycbwnvIj19oSB-UY_dZ2_EbSsg_7G7O6LH-UFfhs7_bDB5Fsq35-jFpdxsG7oCqdoHzolvg/exec';
 
+// WICHTIG: Ersetzen Sie die folgende Nummer durch Ihre echte WhatsApp-Nummer im internationalen Format (z.B. 491761234567 für Deutschland).
+// Keine Nullen am Anfang, kein '+' oder sonstige Zeichen.
+const CHEF_WHATSAPP_NUMBER = '4915786079715'; 
+
 // --- INTERFACES ---
 interface Trip {
   id: string;
@@ -65,9 +69,6 @@ const CustomerBookingForm = () => {
     const [pickupTime, setPickupTime] = useState('');
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
-
-    const [isLoading, setIsLoading] = useState(false);
-    const [formStatus, setFormStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState('');
     
     const handlePickupLocationChange = (index: number, field: keyof Address, value: string) => {
@@ -90,93 +91,59 @@ const CustomerBookingForm = () => {
         }
     };
 
-    const handleSubmit = async (e: FormEvent) => {
+    const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const arePickupsInvalid = pickupLocations.some(loc => !loc.street || !loc.plz);
         if (!customerName || !customerPhone || !destination.street || !destination.plz || !pickupDate || !pickupTime || arePickupsInvalid) {
             setErrorMessage('Bitte füllen Sie alle erforderlichen Felder aus (inkl. PLZ).');
-            setFormStatus('error');
             return;
         }
         if (isAirportPickup && !flightNumber) {
             setErrorMessage('Bitte geben Sie die Flugnummer an.');
-            setFormStatus('error');
             return;
         }
-
         setErrorMessage('');
-        setIsLoading(true);
-        setFormStatus('idle');
 
-        try {
-            const pickupDateTime = `${pickupDate}T${pickupTime}:00`;
-            
-            const pickupLocationsString = pickupLocations
-                .map(loc => `${loc.street}, ${loc.plz}`)
-                .join('; ');
+        const pickupLocationsString = pickupLocations
+            .map(loc => `- ${loc.street}, ${loc.plz}`)
+            .join('\n');
 
-            const destinationString = `${destination.street}, ${destination.plz}`;
+        const destinationString = `${destination.street}, ${destination.plz}`;
+        
+        const formattedDate = new Date(pickupDate).toLocaleDateString('de-DE', {
+            weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit'
+        });
 
-            const response = await fetch(GOOGLE_SHEET_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                    dataType: 'customer_booking',
-                    name: customerName,
-                    phone: customerPhone,
-                    pickupLocations: pickupLocationsString,
-                    destination: destinationString,
-                    pickupDateTime,
-                    flightNumber: isAirportPickup ? flightNumber : ''
-                })
-            });
+        let message = `*Neue Fahrtanfrage*\n\n`;
+        message += `*Kunde:* ${customerName}\n`;
+        message += `*Telefon:* ${customerPhone}\n\n`;
+        message += `*Abholung:*\n${pickupLocationsString}\n\n`;
+        message += `*Ziel:* ${destinationString}\n\n`;
+        message += `*Zeit:* ${formattedDate} um ${pickupTime} Uhr\n`;
 
-            if (!response.ok) throw new Error("Server-Antwort war nicht OK.");
-            const result = await response.json();
-            if (result.status === 'error') throw new Error(result.message);
-
-            setFormStatus('success');
-            // Reset form
-            setPickupLocations([{ street: '', plz: '' }]);
-            setDestination({ street: '', plz: '' });
-            setIsAirportPickup(false);
-            setFlightNumber('');
-            setPickupDate('');
-            setPickupTime('');
-            setCustomerName('');
-            setCustomerPhone('');
-
-        } catch (err: any) {
-            setErrorMessage(err.message || "Ein unerwarteter Fehler ist aufgetreten.");
-            setFormStatus('error');
-        } finally {
-            setIsLoading(false);
+        if (isAirportPickup && flightNumber) {
+            message += `*Flugnummer:* ${flightNumber}\n`;
         }
+        
+        const encodedMessage = encodeURIComponent(message);
+        const whatsappUrl = `https://wa.me/${CHEF_WHATSAPP_NUMBER}?text=${encodedMessage}`;
+        
+        window.location.href = whatsappUrl;
     };
-    
-    if (formStatus === 'success') {
-        return (
-            <div className="auth-container">
-                <div className="auth-form booking-success">
-                    <h2>Vielen Dank!</h2>
-                    <p>Ihre Fahrtanfrage wurde erfolgreich übermittelt. Wir werden uns in Kürze bei Ihnen melden.</p>
-                </div>
-            </div>
-        );
-    }
     
     return (
         <div className="auth-container">
             <div className="auth-form">
                 <h2>Fahrt anfragen</h2>
-                <p>Bitte füllen Sie das Formular aus, um eine Fahrt zu buchen.</p>
+                <p>Nach dem Ausfüllen werden Sie zu WhatsApp weitergeleitet, um die Anfrage zu senden.</p>
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
                         <label htmlFor="customerName">Ihr Name</label>
-                        <input type="text" id="customerName" value={customerName} onChange={e => setCustomerName(e.target.value)} required disabled={isLoading} />
+                        <input type="text" id="customerName" value={customerName} onChange={e => setCustomerName(e.target.value)} required />
                     </div>
                      <div className="form-group">
                         <label htmlFor="customerPhone">Ihre Telefonnummer</label>
-                        <input type="tel" id="customerPhone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required disabled={isLoading} />
+                        <input type="tel" id="customerPhone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required />
                     </div>
                     <div className="form-group">
                         <label>Abholort(e)</label>
@@ -192,7 +159,6 @@ const CustomerBookingForm = () => {
                                             onChange={e => handlePickupLocationChange(index, 'street', e.target.value)}
                                             placeholder={index === 0 ? "Haupt-Abholadresse" : "Weitere Adresse"}
                                             required
-                                            disabled={isLoading}
                                         />
                                     </div>
                                     <div className="form-group plz-group">
@@ -204,18 +170,17 @@ const CustomerBookingForm = () => {
                                             onChange={e => handlePickupLocationChange(index, 'plz', e.target.value)}
                                             placeholder="PLZ"
                                             required
-                                            disabled={isLoading}
                                             pattern="\d{4,5}"
                                             title="Bitte geben Sie eine gültige PLZ ein."
                                         />
                                     </div>
                                 </div>
                                 {pickupLocations.length > 1 && (
-                                    <button type="button" className="remove-location-btn" onClick={() => removePickupLocation(index)} aria-label="Adresse entfernen" disabled={isLoading}>&times;</button>
+                                    <button type="button" className="remove-location-btn" onClick={() => removePickupLocation(index)} aria-label="Adresse entfernen">&times;</button>
                                 )}
                            </div>
                         ))}
-                        <button type="button" className="add-location-btn" onClick={addPickupLocation} disabled={isLoading}>+ Weitere Adresse hinzufügen</button>
+                        <button type="button" className="add-location-btn" onClick={addPickupLocation}>+ Weitere Adresse hinzufügen</button>
                     </div>
                      <div className="form-group">
                         <label htmlFor="destination-street">Zielort</label>
@@ -228,7 +193,6 @@ const CustomerBookingForm = () => {
                                     value={destination.street} 
                                     onChange={e => handleDestinationChange('street', e.target.value)} 
                                     required 
-                                    disabled={isLoading} 
                                     placeholder="Straße & Hausnummer"
                                 />
                             </div>
@@ -241,7 +205,6 @@ const CustomerBookingForm = () => {
                                     onChange={e => handleDestinationChange('plz', e.target.value)}
                                     placeholder="PLZ"
                                     required
-                                    disabled={isLoading}
                                     pattern="\d{4,5}"
                                     title="Bitte geben Sie eine gültige PLZ ein."
                                 />
@@ -251,7 +214,7 @@ const CustomerBookingForm = () => {
                     <div className="form-group">
                         <div className="checkbox-group">
                              <label>
-                                <input type="checkbox" checked={isAirportPickup} onChange={e => setIsAirportPickup(e.target.checked)} disabled={isLoading} />
+                                <input type="checkbox" checked={isAirportPickup} onChange={e => setIsAirportPickup(e.target.checked)} />
                                 Abholung vom Flughafen?
                             </label>
                         </div>
@@ -259,26 +222,26 @@ const CustomerBookingForm = () => {
                     {isAirportPickup && (
                          <div className="form-group">
                             <label htmlFor="flightNumber">Flugnummer</label>
-                            <input type="text" id="flightNumber" value={flightNumber} onChange={e => setFlightNumber(e.target.value)} required disabled={isLoading} placeholder="z.B. EW123" />
+                            <input type="text" id="flightNumber" value={flightNumber} onChange={e => setFlightNumber(e.target.value)} required placeholder="z.B. EW123" />
                         </div>
                     )}
                     <div className="datetime-group">
                         <div className="form-group">
                             <label htmlFor="pickupDate">Datum</label>
-                            <input type="date" id="pickupDate" value={pickupDate} onChange={e => setPickupDate(e.target.value)} required disabled={isLoading} />
+                            <input type="date" id="pickupDate" value={pickupDate} onChange={e => setPickupDate(e.target.value)} required />
                         </div>
                          <div className="form-group">
                             <label htmlFor="pickupTime">Uhrzeit</label>
-                            <input type="time" id="pickupTime" value={pickupTime} onChange={e => setPickupTime(e.target.value)} required disabled={isLoading} />
+                            <input type="time" id="pickupTime" value={pickupTime} onChange={e => setPickupTime(e.target.value)} required />
                         </div>
                     </div>
                      <div className="midnight-warning">
                         <strong>Wichtiger Hinweis:</strong> Eine Fahrt um 00:00 Uhr am 29. Juli findet in der Nacht vom 28. auf den 29. Juli statt. Wenn Sie am Ende des 29. Juli fahren möchten, wählen Sie bitte den 30. Juli, 00:00 Uhr.
                     </div>
 
-                    {formStatus === 'error' && <p className="auth-error">{errorMessage}</p>}
-                    <button type="submit" className="btn-primary auth-btn" disabled={isLoading}>
-                        {isLoading ? 'Wird gesendet...' : 'Fahrt jetzt anfragen'}
+                    {errorMessage && <p className="auth-error">{errorMessage}</p>}
+                    <button type="submit" className="btn-primary auth-btn">
+                        Anfrage per WhatsApp senden
                     </button>
                 </form>
             </div>

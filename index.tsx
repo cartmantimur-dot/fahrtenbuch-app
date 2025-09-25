@@ -13,7 +13,6 @@ const LICENSE_PLATES = [
 ];
 
 const GOOGLE_SHEET_URL: string = 'https://script.google.com/macros/s/AKfycbwnvIj19oSB-UY_dZ2_EbSsg_7G7O6LH-UFfhs7_bDB5Fsq35-jFpdxsG7oCqdoHzolvg/exec';
-const OWN_ACCOUNT_PREFIX = '[OWN_ACCOUNT]';
 
 // --- INTERFACES ---
 interface Trip {
@@ -51,9 +50,241 @@ interface AssignedTrip {
     status: 'pending' | 'accepted' | 'declined';
 }
 
-// Helper functions for own account trips
-const isOwnAccountTrip = (trip: Trip): boolean => trip.notes?.startsWith(OWN_ACCOUNT_PREFIX) ?? false;
-const getDisplayNotes = (trip: Trip): string | undefined => trip.notes?.replace(OWN_ACCOUNT_PREFIX, '').trim();
+interface Address {
+    street: string;
+    plz: string;
+}
+
+// --- NEW CUSTOMER BOOKING FORM ---
+const CustomerBookingForm = () => {
+    const [pickupLocations, setPickupLocations] = useState<Address[]>([{ street: '', plz: '' }]);
+    const [destination, setDestination] = useState<Address>({ street: '', plz: '' });
+    const [isAirportPickup, setIsAirportPickup] = useState(false);
+    const [flightNumber, setFlightNumber] = useState('');
+    const [pickupDate, setPickupDate] = useState('');
+    const [pickupTime, setPickupTime] = useState('');
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+
+    const [isLoading, setIsLoading] = useState(false);
+    const [formStatus, setFormStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [errorMessage, setErrorMessage] = useState('');
+    
+    const handlePickupLocationChange = (index: number, field: keyof Address, value: string) => {
+        const newLocations = [...pickupLocations];
+        newLocations[index][field] = value;
+        setPickupLocations(newLocations);
+    };
+
+    const handleDestinationChange = (field: keyof Address, value: string) => {
+        setDestination(prev => ({ ...prev, [field]: value }));
+    };
+
+    const addPickupLocation = () => {
+        setPickupLocations([...pickupLocations, { street: '', plz: '' }]);
+    };
+    
+    const removePickupLocation = (index: number) => {
+        if (pickupLocations.length > 1) {
+            setPickupLocations(pickupLocations.filter((_, i) => i !== index));
+        }
+    };
+
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        const arePickupsInvalid = pickupLocations.some(loc => !loc.street || !loc.plz);
+        if (!customerName || !customerPhone || !destination.street || !destination.plz || !pickupDate || !pickupTime || arePickupsInvalid) {
+            setErrorMessage('Bitte füllen Sie alle erforderlichen Felder aus (inkl. PLZ).');
+            setFormStatus('error');
+            return;
+        }
+        if (isAirportPickup && !flightNumber) {
+            setErrorMessage('Bitte geben Sie die Flugnummer an.');
+            setFormStatus('error');
+            return;
+        }
+
+        setErrorMessage('');
+        setIsLoading(true);
+        setFormStatus('idle');
+
+        try {
+            const pickupDateTime = `${pickupDate}T${pickupTime}:00`;
+            
+            const pickupLocationsString = pickupLocations
+                .map(loc => `${loc.street}, ${loc.plz}`)
+                .join('; ');
+
+            const destinationString = `${destination.street}, ${destination.plz}`;
+
+            const response = await fetch(GOOGLE_SHEET_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    dataType: 'customer_booking',
+                    name: customerName,
+                    phone: customerPhone,
+                    pickupLocations: pickupLocationsString,
+                    destination: destinationString,
+                    pickupDateTime,
+                    flightNumber: isAirportPickup ? flightNumber : ''
+                })
+            });
+
+            if (!response.ok) throw new Error("Server-Antwort war nicht OK.");
+            const result = await response.json();
+            if (result.status === 'error') throw new Error(result.message);
+
+            setFormStatus('success');
+            // Reset form
+            setPickupLocations([{ street: '', plz: '' }]);
+            setDestination({ street: '', plz: '' });
+            setIsAirportPickup(false);
+            setFlightNumber('');
+            setPickupDate('');
+            setPickupTime('');
+            setCustomerName('');
+            setCustomerPhone('');
+
+        } catch (err: any) {
+            setErrorMessage(err.message || "Ein unerwarteter Fehler ist aufgetreten.");
+            setFormStatus('error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    if (formStatus === 'success') {
+        return (
+            <div className="auth-container">
+                <div className="auth-form booking-success">
+                    <h2>Vielen Dank!</h2>
+                    <p>Ihre Fahrtanfrage wurde erfolgreich übermittelt. Wir werden uns in Kürze bei Ihnen melden.</p>
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="auth-container">
+            <div className="auth-form">
+                <h2>Fahrt anfragen</h2>
+                <p>Bitte füllen Sie das Formular aus, um eine Fahrt zu buchen.</p>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label htmlFor="customerName">Ihr Name</label>
+                        <input type="text" id="customerName" value={customerName} onChange={e => setCustomerName(e.target.value)} required disabled={isLoading} />
+                    </div>
+                     <div className="form-group">
+                        <label htmlFor="customerPhone">Ihre Telefonnummer</label>
+                        <input type="tel" id="customerPhone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required disabled={isLoading} />
+                    </div>
+                    <div className="form-group">
+                        <label>Abholort(e)</label>
+                        {pickupLocations.map((location, index) => (
+                           <div key={index} className="pickup-location-group">
+                                <div className="address-group">
+                                    <div className="form-group">
+                                        <label htmlFor={`pickup-street-${index}`} className="sr-only">Straße &amp; Hausnummer</label>
+                                        <input 
+                                            type="text" 
+                                            id={`pickup-street-${index}`}
+                                            value={location.street}
+                                            onChange={e => handlePickupLocationChange(index, 'street', e.target.value)}
+                                            placeholder={index === 0 ? "Haupt-Abholadresse" : "Weitere Adresse"}
+                                            required
+                                            disabled={isLoading}
+                                        />
+                                    </div>
+                                    <div className="form-group plz-group">
+                                        <label htmlFor={`pickup-plz-${index}`} className="sr-only">PLZ</label>
+                                        <input
+                                            type="text"
+                                            id={`pickup-plz-${index}`}
+                                            value={location.plz}
+                                            onChange={e => handlePickupLocationChange(index, 'plz', e.target.value)}
+                                            placeholder="PLZ"
+                                            required
+                                            disabled={isLoading}
+                                            pattern="\d{4,5}"
+                                            title="Bitte geben Sie eine gültige PLZ ein."
+                                        />
+                                    </div>
+                                </div>
+                                {pickupLocations.length > 1 && (
+                                    <button type="button" className="remove-location-btn" onClick={() => removePickupLocation(index)} aria-label="Adresse entfernen" disabled={isLoading}>&times;</button>
+                                )}
+                           </div>
+                        ))}
+                        <button type="button" className="add-location-btn" onClick={addPickupLocation} disabled={isLoading}>+ Weitere Adresse hinzufügen</button>
+                    </div>
+                     <div className="form-group">
+                        <label htmlFor="destination-street">Zielort</label>
+                         <div className="address-group">
+                            <div className="form-group">
+                               <label htmlFor="destination-street" className="sr-only">Straße &amp; Hausnummer</label>
+                                <input 
+                                    type="text" 
+                                    id="destination-street"
+                                    value={destination.street} 
+                                    onChange={e => handleDestinationChange('street', e.target.value)} 
+                                    required 
+                                    disabled={isLoading} 
+                                    placeholder="Straße & Hausnummer"
+                                />
+                            </div>
+                            <div className="form-group plz-group">
+                                <label htmlFor="destination-plz" className="sr-only">PLZ</label>
+                                <input
+                                    type="text"
+                                    id="destination-plz"
+                                    value={destination.plz}
+                                    onChange={e => handleDestinationChange('plz', e.target.value)}
+                                    placeholder="PLZ"
+                                    required
+                                    disabled={isLoading}
+                                    pattern="\d{4,5}"
+                                    title="Bitte geben Sie eine gültige PLZ ein."
+                                />
+                            </div>
+                         </div>
+                    </div>
+                    <div className="form-group">
+                        <div className="checkbox-group">
+                             <label>
+                                <input type="checkbox" checked={isAirportPickup} onChange={e => setIsAirportPickup(e.target.checked)} disabled={isLoading} />
+                                Abholung vom Flughafen?
+                            </label>
+                        </div>
+                    </div>
+                    {isAirportPickup && (
+                         <div className="form-group">
+                            <label htmlFor="flightNumber">Flugnummer</label>
+                            <input type="text" id="flightNumber" value={flightNumber} onChange={e => setFlightNumber(e.target.value)} required disabled={isLoading} placeholder="z.B. EW123" />
+                        </div>
+                    )}
+                    <div className="datetime-group">
+                        <div className="form-group">
+                            <label htmlFor="pickupDate">Datum</label>
+                            <input type="date" id="pickupDate" value={pickupDate} onChange={e => setPickupDate(e.target.value)} required disabled={isLoading} />
+                        </div>
+                         <div className="form-group">
+                            <label htmlFor="pickupTime">Uhrzeit</label>
+                            <input type="time" id="pickupTime" value={pickupTime} onChange={e => setPickupTime(e.target.value)} required disabled={isLoading} />
+                        </div>
+                    </div>
+                     <div className="midnight-warning">
+                        <strong>Wichtiger Hinweis:</strong> Eine Fahrt um 00:00 Uhr am 29. Juli findet in der Nacht vom 28. auf den 29. Juli statt. Wenn Sie am Ende des 29. Juli fahren möchten, wählen Sie bitte den 30. Juli, 00:00 Uhr.
+                    </div>
+
+                    {formStatus === 'error' && <p className="auth-error">{errorMessage}</p>}
+                    <button type="submit" className="btn-primary auth-btn" disabled={isLoading}>
+                        {isLoading ? 'Wird gesendet...' : 'Fahrt jetzt anfragen'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
 
 
 // The modal component for adding a new trip
@@ -71,7 +302,6 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
   const [numberOfDrivers, setNumberOfDrivers] = useState('1');
   const [iCollectedPayment, setICollectedPayment] = useState(true);
   const [notes, setNotes] = useState('');
-  const [isOwnAccount, setIsOwnAccount] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -96,18 +326,15 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
     setNumberOfDrivers('1');
     setICollectedPayment(true);
     setNotes('');
-    setIsOwnAccount(false);
     onClose();
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!licensePlate || !start || !destination || !amount) {
+    if (!licensePlate || !start || !destination || !amount || !numberOfDrivers) {
       alert('Bitte alle erforderlichen Felder ausfüllen.');
       return;
     }
-
-    const finalNumberOfDrivers = isOwnAccount ? 1 : parseInt(numberOfDrivers, 10);
 
     onSave({
       licensePlate,
@@ -117,9 +344,9 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
         type: paymentType,
         amount: parseFloat(amount),
       },
-      numberOfDrivers: finalNumberOfDrivers,
-      iCollectedPayment: isOwnAccount ? true : (finalNumberOfDrivers === 1 ? true : iCollectedPayment),
-      notes: isOwnAccount ? `${OWN_ACCOUNT_PREFIX}${notes}` : notes,
+      numberOfDrivers: parseInt(numberOfDrivers, 10),
+      iCollectedPayment: parseInt(numberOfDrivers, 10) === 1 ? true : iCollectedPayment,
+      notes,
     });
     
     resetAndClose();
@@ -201,57 +428,35 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
                 </label>
             </div>
           </div>
-
           <div className="form-group">
+            <label htmlFor="num-drivers">Beteiligte Fahrer</label>
+            <input
+              type="number"
+              id="num-drivers"
+              min="1"
+              step="1"
+              value={numberOfDrivers}
+              onChange={(e) => setNumberOfDrivers(e.target.value)}
+              required
+            />
+          </div>
+
+          {parseInt(numberOfDrivers, 10) > 1 && (
+            <div className="form-group">
               <div className="checkbox-group">
                   <label>
                       <input
                       type="checkbox"
-                      checked={isOwnAccount}
-                      onChange={(e) => setIsOwnAccount(e.target.checked)}
+                      checked={iCollectedPayment}
+                      onChange={(e) => setICollectedPayment(e.target.checked)}
                       />
-                      Fahrt auf eigene Rechnung
+                      Ich habe den Gesamtbetrag kassiert
                   </label>
               </div>
                <p className="form-hint">
-                Wenn aktiviert, wird der Betrag zu 100% als Ihr Verdienst gezählt und nicht mit dem Chef geteilt.
+                Für eine Hin- und Rückfahrt mit zwei Fahrern: Tragen Sie 2 Fahrer und den Gesamtbetrag ein. Nur der Fahrer, der das Geld erhalten hat, markiert diese Box.
               </p>
-          </div>
-
-
-          {!isOwnAccount && (
-            <>
-                <div className="form-group">
-                    <label htmlFor="num-drivers">Beteiligte Fahrer</label>
-                    <input
-                    type="number"
-                    id="num-drivers"
-                    min="1"
-                    step="1"
-                    value={numberOfDrivers}
-                    onChange={(e) => setNumberOfDrivers(e.target.value)}
-                    required
-                    />
-                </div>
-
-                {parseInt(numberOfDrivers, 10) > 1 && (
-                    <div className="form-group">
-                    <div className="checkbox-group">
-                        <label>
-                            <input
-                            type="checkbox"
-                            checked={iCollectedPayment}
-                            onChange={(e) => setICollectedPayment(e.target.checked)}
-                            />
-                            Ich habe den Gesamtbetrag kassiert
-                        </label>
-                    </div>
-                    <p className="form-hint">
-                        Für eine Hin- und Rückfahrt mit zwei Fahrern: Tragen Sie 2 Fahrer und den Gesamtbetrag ein. Nur der Fahrer, der das Geld erhalten hat, markiert diese Box.
-                    </p>
-                    </div>
-                )}
-            </>
+            </div>
           )}
           
           <div className="form-group">
@@ -382,102 +587,6 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmButto
   );
 };
 
-// --- SUPPORT MODAL ---
-const SupportModal = ({ isOpen, onClose, onSubmit, openTrips }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onSubmit: (message: string, attachedTripId: string) => Promise<void>;
-    openTrips: Trip[];
-}) => {
-    const [message, setMessage] = useState('');
-    const [selectedTripId, setSelectedTripId] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    if (!isOpen) {
-        return null;
-    }
-
-    const resetAndClose = () => {
-        setMessage('');
-        setSelectedTripId('');
-        setIsLoading(false);
-        setError('');
-        onClose();
-    };
-
-    const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        if (!message) {
-            setError('Bitte beschreiben Sie Ihr Problem.');
-            return;
-        }
-        setError('');
-        setIsLoading(true);
-        try {
-            await onSubmit(message, selectedTripId);
-            alert('Ihre Anfrage wurde erfolgreich gesendet!');
-            resetAndClose();
-        } catch (err: any) {
-            setError(err.message || 'Ein Fehler ist aufgetreten.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <div className="modal-overlay" onClick={resetAndClose}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h2>Support kontaktieren</h2>
-                <p>Beschreiben Sie Ihr Problem. Sie erhalten eine Benachrichtigung per E-Mail, sobald Ihr Ticket erstellt wurde.</p>
-                <form onSubmit={handleSubmit}>
-                    <div className="form-group">
-                        <label htmlFor="support-message">Ihre Nachricht</label>
-                        <textarea
-                            id="support-message"
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            rows={5}
-                            placeholder="Bitte beschreiben Sie das Problem so detailliert wie möglich..."
-                            required
-                            disabled={isLoading}
-                        ></textarea>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="support-trip-select">Fahrt anhängen (optional)</label>
-                        <select
-                            id="support-trip-select"
-                            value={selectedTripId}
-                            onChange={(e) => setSelectedTripId(e.target.value)}
-                            disabled={isLoading || openTrips.length === 0}
-                        >
-                            <option value="">{openTrips.length === 0 ? "Keine offenen Fahrten" : "Fahrt auswählen..."}</option>
-                            {openTrips.map(trip => (
-                                <option key={trip.id} value={trip.id}>
-                                    {trip.start} → {trip.destination}
-                                </option>
-                            ))}
-                        </select>
-                         <p className="form-hint">
-                            Wenn sich Ihr Problem auf eine bestimmte Fahrt bezieht, können Sie diese hier auswählen.
-                        </p>
-                    </div>
-                     {error && <p className="auth-error">{error}</p>}
-                    <div className="modal-actions">
-                        <button type="button" className="btn-secondary" onClick={resetAndClose} disabled={isLoading}>
-                            Abbrechen
-                        </button>
-                        <button type="submit" className="btn-primary" disabled={isLoading}>
-                            {isLoading ? 'Senden...' : 'Anfrage senden'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-
 const formatMonth = (key: string) => {
     const [year, monthNum] = key.split('-');
     const monthIndex = parseInt(monthNum, 10) - 1;
@@ -521,10 +630,7 @@ const ArchiveView = ({ trips, expenses, onClose }: { trips: Trip[], expenses: Ex
 
             if ('licensePlate' in item) { // It's a Trip
                 acc[monthKey].trips.push(item);
-                const earnings = isOwnAccountTrip(item) 
-                    ? item.payment.amount 
-                    : (item.payment.amount * 0.5) / item.numberOfDrivers;
-                acc[monthKey].totalEarnings += earnings;
+                acc[monthKey].totalEarnings += (item.payment.amount * 0.5) / item.numberOfDrivers;
             } else { // It's an Expense
                 acc[monthKey].expenses.push(item);
             }
@@ -559,23 +665,20 @@ const ArchiveView = ({ trips, expenses, onClose }: { trips: Trip[], expenses: Ex
             </div>
             
             {monthData.trips.length > 0 && <h4>Abgerechnete Fahrten</h4>}
-            {monthData.trips.map(trip => {
-                const displayNotes = getDisplayNotes(trip);
-                return (
-                    <div key={trip.id} className="trip-card settled">
-                        <div className="card-header">
-                            <div className="card-path">
-                                <span className="license-plate-badge">{trip.licensePlate}</span>
-                                <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
-                            </div>
-                        </div>
-                         {displayNotes && <div className="card-notes"><p>{displayNotes}</p></div>}
-                        <div className="card-payment">
-                           {`Einnahme: ${trip.payment.amount.toFixed(2)} €`}
+            {monthData.trips.map(trip => (
+                <div key={trip.id} className="trip-card settled">
+                    <div className="card-header">
+                        <div className="card-path">
+                            <span className="license-plate-badge">{trip.licensePlate}</span>
+                            <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                         </div>
                     </div>
-                )
-            })}
+                    {trip.notes && <div className="card-notes"><p>{trip.notes}</p></div>}
+                    <div className="card-payment">
+                       {`Einnahme: ${trip.payment.amount.toFixed(2)} €`}
+                    </div>
+                </div>
+            ))}
 
             {monthData.expenses.length > 0 && <h4>Erstattete Ausgaben</h4>}
             {monthData.expenses.map(expense => (
@@ -693,22 +796,15 @@ Erwartetes JSON: {"start":"Blumenstr. 21","destination":"Westfalenhalle Dortmund
         try {
             const parsedData = await parseTripWithAI(messageText);
             
-            const payload = {
-                dataType: 'assign_trip',
-                assignTo: selectedDriver,
-                ...parsedData,
-                pickupTime: parsedData.pickupTime || ''
-            };
-
-            const response = await fetch(GOOGLE_SHEET_URL, {
+            await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    dataType: 'assign_trip',
+                    assignTo: selectedDriver,
+                    ...parsedData,
+                    pickupTime: parsedData.pickupTime || ''
+                }),
             });
-
-            if (!response.ok) throw new Error("Server-Antwort war nicht OK.");
-            const result = await response.json();
-            if (result.status !== 'success') throw new Error(result.message);
             
             setMessageText('');
             setSelectedDriver('');
@@ -802,9 +898,7 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     }, []);
 
     const statsByMonth = useMemo(() => {
-        const companyTrips = trips.filter(trip => !isOwnAccountTrip(trip));
-
-        const groupedByMonth = companyTrips.reduce((acc, trip) => {
+        const groupedByMonth = trips.reduce((acc, trip) => {
             const dateString = trip.id.substring(0, 24);
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return acc;
@@ -886,27 +980,23 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                 </header>
                 <main className="boss-container">
                     <div className="list-container">
-                        {monthData.trips.map(trip => {
-                            const displayNotes = getDisplayNotes(trip);
-                            return (
-                                <div key={trip.id} className="trip-card boss-trip-card">
-                                    <div className="card-header">
-                                        <div className="card-path">
-                                            <span className="license-plate-badge">{trip.licensePlate}</span>
-                                            <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
-                                        </div>
-                                        <span className="boss-trip-date">{formatDate(trip.id)}</span>
+                        {monthData.trips.map(trip => (
+                             <div key={trip.id} className="trip-card boss-trip-card">
+                                <div className="card-header">
+                                    <div className="card-path">
+                                        <span className="license-plate-badge">{trip.licensePlate}</span>
+                                        <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                                     </div>
-                                    <div className="card-details">
-                                        <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
-                                    </div>
-                                    {displayNotes && <div className="card-notes"><p>{displayNotes}</p></div>}
-                                    <div className={`card-payment ${trip.payment.type}`}>
-                                        Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
-                                    </div>
+                                    <span className="boss-trip-date">{formatDate(trip.id)}</span>
                                 </div>
-                            )
-                        })}
+                                <div className="card-details">
+                                    <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
+                                </div>
+                                <div className={`card-payment ${trip.payment.type}`}>
+                                    Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </main>
             </>
@@ -1040,7 +1130,6 @@ const App = ({ username, initialData, onLogout }: {
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToStart, setTripToStart] = useState<AssignedTrip | null>(null);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<'trips' | 'expenses' | 'stats'>('trips');
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -1055,94 +1144,36 @@ const App = ({ username, initialData, onLogout }: {
   const syncTrip = async (trip: Trip) => {
     if (!GOOGLE_SHEET_URL) return;
     try {
-        const payload = { dataType: 'trip', ...trip, username };
-        const response = await fetch(GOOGLE_SHEET_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Serverfehler (${response.status}): ${errorText}`);
-        }
-        const result = await response.json();
-        if (result.status === 'error') {
-            throw new Error(result.message);
-        }
-    } catch (error: any) {
+      await fetch(GOOGLE_SHEET_URL, {
+        method: 'POST',
+        body: JSON.stringify({ dataType: 'trip', ...trip, username }),
+      });
+    } catch (error) {
       console.error("Failed to sync trip:", error);
-      alert(`Die Fahrt konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Internetverbindung. Fehlermeldung: ${error.message}`);
     }
   };
 
   const syncExpense = async (expense: Expense) => {
     if (!GOOGLE_SHEET_URL) return;
     try {
-        const payload = { dataType: 'expense', ...expense, username };
-        const response = await fetch(GOOGLE_SHEET_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Serverfehler (${response.status}): ${errorText}`);
-        }
-        const result = await response.json();
-        if (result.status === 'error') {
-            throw new Error(result.message);
-        }
-    } catch (error: any) {
+      await fetch(GOOGLE_SHEET_URL, {
+        method: 'POST',
+        body: JSON.stringify({ dataType: 'expense', ...expense, username }),
+      });
+    } catch (error) {
       console.error("Failed to sync expense:", error);
-      alert(`Die Ausgabe konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Internetverbindung. Fehlermeldung: ${error.message}`);
     }
   };
 
   const updateAssignedTripStatus = async (id: string, status: 'accepted' | 'declined') => {
     setAssignedTrips(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     try {
-        const payload = { dataType: 'update_assigned_trip_status', id, status };
-        const response = await fetch(GOOGLE_SHEET_URL, {
+        await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ dataType: 'update_assigned_trip_status', id, status, username }),
         });
-        if (!response.ok) throw new Error("Status-Update fehlgeschlagen");
     } catch (error) {
         console.error("Failed to update trip status:", error);
-    }
-  };
-
-  const handleSendSupportTicket = async (message: string, attachedTripId: string) => {
-    if (!GOOGLE_SHEET_URL) {
-        throw new Error("App ist nicht konfiguriert.");
-    }
-    try {
-        const payload = { 
-            dataType: 'support_ticket', 
-            username, 
-            message, 
-            attachedTripId 
-        };
-        const response = await fetch(GOOGLE_SHEET_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Support ticket submission failed:", response.status, errorText);
-            throw new Error(`Der Server hat mit einem Fehler geantwortet. Bitte versuchen Sie es später erneut.`);
-        }
-
-        const result = await response.json();
-        if (result.status === 'error') {
-            throw new Error(result.message || 'Fehler beim Senden des Tickets.');
-        }
-    } catch (error: any) {
-        console.error("Failed to send support ticket:", error);
-        throw new Error("Das Ticket konnte nicht gesendet werden. Bitte Internetverbindung prüfen.");
     }
   };
 
@@ -1160,14 +1191,11 @@ const App = ({ username, initialData, onLogout }: {
     await syncTrip(newTrip);
 
     if (tripToStart) {
-        const tripToRemoveId = tripToStart.id;
-        setAssignedTrips(prev => prev.filter(t => t.id !== tripToRemoveId));
+        setAssignedTrips(prev => prev.filter(t => t.id !== tripToStart.id));
         try {
-            const payload = { dataType: 'remove_assigned_trip', id: tripToRemoveId };
             await fetch(GOOGLE_SHEET_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ dataType: 'remove_assigned_trip', id: tripToStart.id, username }),
             });
         } catch (error) {
             console.error("Failed to remove assigned trip:", error);
@@ -1273,14 +1301,7 @@ const App = ({ username, initialData, onLogout }: {
     const unreimbursedExpenses = expenses.filter(expense => !expense.isReimbursed);
     const openCashCollected = unsettledTrips.filter(t => t.payment.type === 'cash' && t.iCollectedPayment).reduce((s, t) => s + t.payment.amount, 0);
     const openInvoiceIssued = unsettledTrips.filter(t => t.payment.type === 'invoice' && t.iCollectedPayment).reduce((s, t) => s + t.payment.amount, 0);
-    
-    const openUserShare = unsettledTrips.reduce((s, t) => {
-        const earnings = isOwnAccountTrip(t)
-            ? t.payment.amount
-            : (t.payment.amount * 0.5) / t.numberOfDrivers;
-        return s + earnings;
-    }, 0);
-
+    const openUserShare = unsettledTrips.reduce((s, t) => s + (t.payment.amount * 0.5) / t.numberOfDrivers, 0);
     const openExpenses = unreimbursedExpenses.reduce((s, e) => s + e.amount, 0);
     const openMyEarnings = openUserShare;
     const amountToBoss = openCashCollected - openUserShare - openExpenses;
@@ -1343,23 +1364,22 @@ const App = ({ username, initialData, onLogout }: {
                         </div>
                     ) : openTrips.length > 0 && (
                         <div className="list-container">
-                            {openTrips.map(trip => {
-                                const ownAccount = isOwnAccountTrip(trip);
-                                const displayNotes = getDisplayNotes(trip);
-                                return (
+                            {openTrips.map(trip => (
                                 <div key={trip.id} className="trip-card">
                                     <div className="card-header">
                                         <div className="card-path">
                                             <span className="license-plate-badge">{trip.licensePlate}</span>
                                             <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                                         </div>
+                                        <button onClick={() => handleDeleteTrip(trip.id)} className="delete-btn" aria-label="Fahrt löschen">
+                                            &times;
+                                        </button>
                                     </div>
                                     <div className="card-details">
-                                        {ownAccount && (<span className="detail-badge own-account-badge">Eigene Rechnung</span>)}
-                                        {trip.numberOfDrivers > 1 && !ownAccount && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
+                                        {trip.numberOfDrivers > 1 && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
                                         <span className="detail-badge">{trip.iCollectedPayment ? 'Bezahlung erhalten' : 'Bezahlung durch Kollegen'}</span>
                                     </div>
-                                    {displayNotes && (<div className="card-notes"><p>{displayNotes}</p></div>)}
+                                    {trip.notes && (<div className="card-notes"><p>{trip.notes}</p></div>)}
                                     <div className={`card-payment ${trip.payment.type}`}>
                                         {trip.payment.type === 'cash' ? `Bar erhalten: ${trip.payment.amount.toFixed(2)} €` : `Per Rechnung: ${trip.payment.amount.toFixed(2)} €`}
                                     </div>
@@ -1367,7 +1387,7 @@ const App = ({ username, initialData, onLogout }: {
                                       <button onClick={() => handleSettleTrip(trip.id)} className="settle-btn">Mit Chef abrechnen</button>
                                     </div>
                                 </div>
-                            )})}
+                            ))}
                         </div>
                     )}
                     <button className="add-fab" onClick={() => { setTripToStart(null); setIsTripModalOpen(true); }} aria-label="Fahrt hinzufügen">+</button>
@@ -1387,6 +1407,7 @@ const App = ({ username, initialData, onLogout }: {
                                 <div key={expense.id} className="expense-card">
                                     <div className="card-header">
                                         <span>{expense.description}</span>
+                                        <button onClick={() => handleDeleteExpense(expense.id)} className="delete-btn" aria-label="Ausgabe löschen">&times;</button>
                                     </div>
                                     <div className="expense-amount">{expense.amount.toFixed(2)} €</div>
                                     <div className="card-actions">
@@ -1438,7 +1459,6 @@ const App = ({ username, initialData, onLogout }: {
             <div className="header-content">
                 <h1>Fahrtenbuch</h1>
                 <div className="header-actions">
-                    <button className="header-btn support-btn" onClick={() => setIsSupportModalOpen(true)}>Support</button>
                     <button className="header-btn" onClick={() => setIsArchiveOpen(true)}>Archiv</button>
                     <button className="logout-btn" onClick={onLogout}>Logout</button>
                 </div>
@@ -1454,12 +1474,6 @@ const App = ({ username, initialData, onLogout }: {
         <AddExpenseModal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} onSave={handleAddExpense} />
         <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} {...confirmModalProps} />
         {isArchiveOpen && <ArchiveView trips={trips} expenses={expenses} onClose={() => setIsArchiveOpen(false)} />}
-        <SupportModal 
-            isOpen={isSupportModalOpen} 
-            onClose={() => setIsSupportModalOpen(false)} 
-            onSubmit={handleSendSupportTicket} 
-            openTrips={openTrips} 
-        />
     </>
   );
 };
@@ -1599,8 +1613,16 @@ const AppContainer = () => {
     const [appData, setAppData] = useState<{ trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[], drivers: string[] }>({ trips: [], expenses: [], assignedTrips: [], drivers: [] });
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [authView, setAuthView] = useState<'login' | 'register'>('login');
+    const [isBookingMode, setIsBookingMode] = useState(false);
 
     useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('booking') === 'true') {
+            setIsBookingMode(true);
+            setIsDataLoading(false);
+            return;
+        }
+
         const loggedInUser = localStorage.getItem('fahrtenbuch-currentUser');
         if (loggedInUser) {
             setCurrentUser(loggedInUser);
@@ -1621,19 +1643,14 @@ const AppContainer = () => {
             }
             
             try {
-                const url = new URL(GOOGLE_SHEET_URL);
-                url.searchParams.append('action', 'getData');
-                url.searchParams.append('user', currentUser);
-
-                const response = await fetch(url.toString());
-
+                const response = await fetch(`${GOOGLE_SHEET_URL}?action=getData&user=${encodeURIComponent(currentUser)}`);
                 if (!response.ok) throw new Error(`Serverfehler: ${response.statusText}`);
                 
                 const result = await response.json();
                 if (result.status === 'error') throw new Error(result.message);
                 
                 setAppData({
-                    trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, notes: t.Notizen || t.notes, isSettled: t.isSettled || false })),
+                    trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, isSettled: t.isSettled || false })),
                     expenses: (result.expenses || []).filter((e: any) => e && e.id).map((e: any) => ({ ...e, isReimbursed: e.isReimbursed || false })),
                     assignedTrips: (result.assignedTrips || []).filter((t: any) => t && t.id),
                     drivers: result.drivers || [],
@@ -1652,13 +1669,7 @@ const AppContainer = () => {
     const handleLogin = async (username: string, password: string) => {
         if (!GOOGLE_SHEET_URL) throw new Error("App ist nicht konfiguriert.");
         
-        const url = new URL(GOOGLE_SHEET_URL);
-        url.searchParams.append('action', 'login');
-        url.searchParams.append('user', username);
-        url.searchParams.append('pass', password);
-
-        const response = await fetch(url.toString());
-
+        const response = await fetch(`${GOOGLE_SHEET_URL}?action=login&user=${encodeURIComponent(username)}&pass=${encodeURIComponent(password)}`);
         if(!response.ok) throw new Error("Kommunikationsfehler mit dem Server.");
         
         const result = await response.json();
@@ -1673,16 +1684,9 @@ const AppContainer = () => {
     const handleRegister = async (username: string, password: string) => {
         if (!GOOGLE_SHEET_URL) throw new Error("App ist nicht konfiguriert.");
 
-        const payload = {
-            dataType: 'user_register',
-            username,
-            password
-        };
-
         const response = await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ dataType: 'user_register', username, password }),
         });
 
         if (!response.ok) throw new Error("Fehler bei der Registrierung.");
@@ -1709,6 +1713,10 @@ const AppContainer = () => {
                 <p>Daten werden geladen...</p>
             </div>
         );
+    }
+
+    if (isBookingMode) {
+        return <CustomerBookingForm />;
     }
 
     if (!currentUser) {

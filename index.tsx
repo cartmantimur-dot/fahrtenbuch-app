@@ -136,7 +136,10 @@ const CustomerBookingForm = () => {
         message += `*Anzahl Personen:* ${passengerCount}\n\n`;
         message += `*Abholung:*\n${pickupLocationsString}\n\n`;
         message += `*Ziel:* ${destinationString}\n\n`;
-        message += `*Zeit:* ${formattedDate} um ${pickupTime} Uhr\n`;
+
+        const timeLabel = isAirportPickup ? 'Landezeit' : 'Abholzeit';
+        message += `*Abholdatum:* ${formattedDate}\n`;
+        message += `*${timeLabel}:* ${pickupTime} Uhr\n`;
 
         if (isAirportPickup && flightNumber) {
             message += `*Flugnummer:* ${flightNumber}\n`;

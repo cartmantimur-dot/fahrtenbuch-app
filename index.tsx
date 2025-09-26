@@ -61,6 +61,9 @@ interface Address {
 
 // --- NEW CUSTOMER BOOKING FORM ---
 const CustomerBookingForm = () => {
+    const COLOGNE_AIRPORT = { street: 'Flughafen Köln/Bonn (CGN)', plz: '51147' };
+    const DUSSELDORF_AIRPORT = { street: 'Flughafen Düsseldorf (DUS)', plz: '40474' };
+
     const [pickupLocations, setPickupLocations] = useState<Address[]>([{ street: '', plz: '' }]);
     const [destination, setDestination] = useState<Address>({ street: '', plz: '' });
     const [isAirportPickup, setIsAirportPickup] = useState(false);
@@ -69,6 +72,7 @@ const CustomerBookingForm = () => {
     const [pickupTime, setPickupTime] = useState('');
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
+    const [passengerCount, setPassengerCount] = useState('1');
     const [errorMessage, setErrorMessage] = useState('');
     
     const handlePickupLocationChange = (index: number, field: keyof Address, value: string) => {
@@ -90,11 +94,23 @@ const CustomerBookingForm = () => {
             setPickupLocations(pickupLocations.filter((_, i) => i !== index));
         }
     };
+    
+    const setPickupAsAirport = (airport: Address) => {
+        const newLocations = [...pickupLocations];
+        newLocations[0] = airport; 
+        setPickupLocations(newLocations);
+        setIsAirportPickup(true);
+    };
+
+    const setDestinationAsAirport = (airport: Address) => {
+        setDestination(airport);
+    };
+
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const arePickupsInvalid = pickupLocations.some(loc => !loc.street || !loc.plz);
-        if (!customerName || !customerPhone || !destination.street || !destination.plz || !pickupDate || !pickupTime || arePickupsInvalid) {
+        if (!customerName || !customerPhone || !passengerCount || !destination.street || !destination.plz || !pickupDate || !pickupTime || arePickupsInvalid) {
             setErrorMessage('Bitte füllen Sie alle erforderlichen Felder aus (inkl. PLZ).');
             return;
         }
@@ -116,7 +132,8 @@ const CustomerBookingForm = () => {
 
         let message = `*Neue Fahrtanfrage*\n\n`;
         message += `*Kunde:* ${customerName}\n`;
-        message += `*Telefon:* ${customerPhone}\n\n`;
+        message += `*Telefon:* ${customerPhone}\n`;
+        message += `*Anzahl Personen:* ${passengerCount}\n\n`;
         message += `*Abholung:*\n${pickupLocationsString}\n\n`;
         message += `*Ziel:* ${destinationString}\n\n`;
         message += `*Zeit:* ${formattedDate} um ${pickupTime} Uhr\n`;
@@ -146,7 +163,15 @@ const CustomerBookingForm = () => {
                         <input type="tel" id="customerPhone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} required />
                     </div>
                     <div className="form-group">
+                        <label htmlFor="passengerCount">Anzahl der Fahrgäste</label>
+                        <input type="number" id="passengerCount" value={passengerCount} min="1" onChange={e => setPassengerCount(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
                         <label>Abholort(e)</label>
+                        <div className="airport-buttons">
+                            <button type="button" onClick={() => setPickupAsAirport(COLOGNE_AIRPORT)}>✈️ Köln/Bonn</button>
+                            <button type="button" onClick={() => setPickupAsAirport(DUSSELDORF_AIRPORT)}>✈️ Düsseldorf</button>
+                        </div>
                         {pickupLocations.map((location, index) => (
                            <div key={index} className="pickup-location-group">
                                 <div className="address-group">
@@ -184,6 +209,10 @@ const CustomerBookingForm = () => {
                     </div>
                      <div className="form-group">
                         <label htmlFor="destination-street">Zielort</label>
+                         <div className="airport-buttons">
+                            <button type="button" onClick={() => setDestinationAsAirport(COLOGNE_AIRPORT)}>✈️ Köln/Bonn</button>
+                            <button type="button" onClick={() => setDestinationAsAirport(DUSSELDORF_AIRPORT)}>✈️ Düsseldorf</button>
+                        </div>
                          <div className="address-group">
                             <div className="form-group">
                                <label htmlFor="destination-street" className="sr-only">Straße &amp; Hausnummer</label>

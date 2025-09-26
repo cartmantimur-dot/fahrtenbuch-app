@@ -949,6 +949,7 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [cockpitTrips, setCockpitTrips] = useState<AssignedTrip[]>(initialAssignedTrips);
+    const [toastMessage, setToastMessage] = useState('');
 
     const fetchCockpitData = async () => {
         try {
@@ -961,6 +962,12 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
             console.error("Failed to refresh cockpit data:", error);
         }
     };
+    
+    const handleTripAssigned = () => {
+        fetchCockpitData();
+        setToastMessage('✅ Fahrt erfolgreich zugewiesen!');
+    };
+
 
     useEffect(() => {
         const intervalId = setInterval(fetchCockpitData, 30000); // Refresh every 30 seconds
@@ -1075,7 +1082,7 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     
     return (
         <>
-            <AssignTripModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} drivers={drivers} onTripAssigned={fetchCockpitData} />
+            <AssignTripModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} drivers={drivers} onTripAssigned={handleTripAssigned} />
             <header>
                 <div className="header-content">
                     <h1>Chef-Dashboard</h1>
@@ -1184,6 +1191,7 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                     })
                 )}
             </main>
+            <Toast message={toastMessage} onClear={() => setToastMessage('')} />
         </>
     );
 };
@@ -1254,6 +1262,7 @@ const App = ({ username, initialData, onLogout }: {
 
   const updateAssignedTripStatus = async (id: string, status: 'accepted' | 'declined') => {
     setAssignedTrips(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+    setToastMessage(status === 'accepted' ? '✅ Fahrt akzeptiert!' : 'Fahrt abgelehnt.');
     try {
         await fetch(GOOGLE_SHEET_URL, {
             method: 'POST',
@@ -1261,6 +1270,7 @@ const App = ({ username, initialData, onLogout }: {
         });
     } catch (error) {
         console.error("Failed to update trip status:", error);
+        setToastMessage('❌ Status konnte nicht übermittelt werden.');
     }
   };
 
@@ -1302,7 +1312,10 @@ const App = ({ username, initialData, onLogout }: {
         return trip;
     });
     setTrips(updatedTrips);
-    if (settledTrip) syncTrip(settledTrip);
+    if (settledTrip) {
+        syncTrip(settledTrip);
+        setToastMessage('✅ Fahrt wurde abgerechnet.');
+    }
   };
 
   const handleAddExpense = (newExpenseData: Omit<Expense, 'id' | 'isReimbursed' | 'username'>) => {
@@ -1325,7 +1338,10 @@ const App = ({ username, initialData, onLogout }: {
         return expense;
     });
     setExpenses(updatedExpenses);
-    if (reimbursedExpense) syncExpense(reimbursedExpense);
+    if (reimbursedExpense) {
+        syncExpense(reimbursedExpense);
+        setToastMessage('✅ Ausgabe wurde erstattet.');
+    }
   };
 
   const handleSettleAll = () => {

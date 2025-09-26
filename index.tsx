@@ -1288,18 +1288,6 @@ const App = ({ username, initialData, onLogout }: {
         setTripToStart(null);
     }
   };
-  
-  const handleDeleteTrip = (id: string) => {
-    setConfirmModalProps({
-        title: 'Fahrt löschen', message: 'Soll diese Fahrt wirklich endgültig gelöscht werden?',
-        onConfirm: () => {
-            setTrips(prevTrips => prevTrips.filter(trip => trip.id !== id));
-            setIsConfirmModalOpen(false);
-        },
-        confirmButtonText: 'Löschen', isDestructive: true,
-    });
-    setIsConfirmModalOpen(true);
-  };
 
   const handleSettleTrip = (id: string) => {
     let settledTrip: Trip | undefined;
@@ -1335,18 +1323,6 @@ const App = ({ username, initialData, onLogout }: {
     });
     setExpenses(updatedExpenses);
     if (reimbursedExpense) syncExpense(reimbursedExpense);
-  };
-
-  const handleDeleteExpense = (id: string) => {
-    setConfirmModalProps({
-        title: 'Ausgabe löschen', message: 'Soll diese Ausgabe wirklich endgültig gelöscht werden?',
-        onConfirm: () => {
-            setExpenses(prevExpenses => prevExpenses.filter(expense => expense.id !== id));
-            setIsConfirmModalOpen(false);
-        },
-        confirmButtonText: 'Löschen', isDestructive: true,
-    });
-    setIsConfirmModalOpen(true);
   };
 
   const handleSettleAll = () => {
@@ -1394,8 +1370,15 @@ const App = ({ username, initialData, onLogout }: {
                   attachedTripId: attachedTripId || '',
               }),
           });
+          
+          if (!response.ok) {
+              throw new Error('Kommunikationsfehler mit dem Server.');
+          }
+
           const result = await response.json();
-          if (result.status !== 'success') throw new Error(result.message);
+          if (result.status === 'error') {
+              throw new Error(result.message);
+          }
           
           setToastMessage('✅ Support-Ticket erfolgreich gesendet!');
           setIsSupportModalOpen(false);
@@ -1480,9 +1463,6 @@ const App = ({ username, initialData, onLogout }: {
                                             <span className="license-plate-badge">{trip.licensePlate}</span>
                                             <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                                         </div>
-                                        <button onClick={() => handleDeleteTrip(trip.id)} className="delete-btn" aria-label="Fahrt löschen">
-                                            &times;
-                                        </button>
                                     </div>
                                     <div className="card-details">
                                         {trip.numberOfDrivers > 1 && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
@@ -1516,7 +1496,6 @@ const App = ({ username, initialData, onLogout }: {
                                 <div key={expense.id} className="expense-card">
                                     <div className="card-header">
                                         <span>{expense.description}</span>
-                                        <button onClick={() => handleDeleteExpense(expense.id)} className="delete-btn" aria-label="Ausgabe löschen">&times;</button>
                                     </div>
                                     <div className="expense-amount">{expense.amount.toFixed(2)} €</div>
                                     <div className="card-actions">

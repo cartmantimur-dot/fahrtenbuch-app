@@ -256,11 +256,11 @@ const CustomerBookingForm = () => {
                     )}
                     <div className="datetime-group">
                         <div className="form-group">
-                            <label htmlFor="pickupDate">Datum</label>
+                            <label htmlFor="pickupDate">Abholdatum</label>
                             <input type="date" id="pickupDate" value={pickupDate} onChange={e => setPickupDate(e.target.value)} required />
                         </div>
                          <div className="form-group">
-                            <label htmlFor="pickupTime">Uhrzeit</label>
+                            <label htmlFor="pickupTime">{isAirportPickup ? 'Landezeit' : 'Abholzeit'}</label>
                             <input type="time" id="pickupTime" value={pickupTime} onChange={e => setPickupTime(e.target.value)} required />
                         </div>
                     </div>

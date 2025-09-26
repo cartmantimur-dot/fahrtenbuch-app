@@ -579,6 +579,81 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmButto
   );
 };
 
+const SupportModal = ({ isOpen, onClose, onSubmit, openTrips }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (message: string, attachedTripId: string | null) => void;
+    openTrips: Trip[];
+}) => {
+    const [message, setMessage] = useState('');
+    const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+    if (!isOpen) {
+        return null;
+    }
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+        if (!message.trim()) {
+            alert('Bitte beschreiben Sie Ihr Anliegen.');
+            return;
+        }
+        onSubmit(message, selectedTripId);
+        setMessage('');
+        setSelectedTripId(null);
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Support kontaktieren</h2>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label htmlFor="support-message">Ihre Nachricht</label>
+                        <textarea
+                            id="support-message"
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            rows={5}
+                            placeholder="Bitte beschreiben Sie hier Ihr Problem oder Ihre Frage..."
+                            required
+                        ></textarea>
+                    </div>
+
+                    {openTrips.length > 0 && (
+                        <div className="form-group">
+                            <label>Problem mit einer Fahrt verknüpfen (optional)</label>
+                            <div className="support-trip-list">
+                                {openTrips.map(trip => (
+                                    <label key={trip.id} className="support-trip-item">
+                                        <input
+                                            type="radio"
+                                            name="support-trip"
+                                            value={trip.id}
+                                            checked={selectedTripId === trip.id}
+                                            onChange={() => setSelectedTripId(trip.id)}
+                                        />
+                                        <div className="trip-details-container">
+                                            <span>{trip.start} → {trip.destination}</span>
+                                            <span className="amount">{trip.payment.amount.toFixed(2)} €</span>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="modal-actions">
+                        <button type="button" className="btn-secondary" onClick={onClose}>Abbrechen</button>
+                        <button type="submit" className="btn-primary">Ticket senden</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
 const formatMonth = (key: string) => {
     const [year, monthNum] = key.split('-');
     const monthIndex = parseInt(monthNum, 10) - 1;
@@ -1110,6 +1185,21 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     );
 };
 
+const Toast = ({ message, onClear }: { message: string, onClear: () => void }) => {
+    useEffect(() => {
+        if (message) {
+            const timer = setTimeout(() => {
+                onClear();
+            }, 3500);
+            return () => clearTimeout(timer);
+        }
+    }, [message, onClear]);
+
+    if (!message) return null;
+
+    return <div className="toast-notification">{message}</div>;
+};
+
 // Main App component for Drivers
 const App = ({ username, initialData, onLogout }: { 
     username: string, 
@@ -1122,9 +1212,11 @@ const App = ({ username, initialData, onLogout }: {
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToStart, setTripToStart] = useState<AssignedTrip | null>(null);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<'trips' | 'expenses' | 'stats'>('trips');
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
   const [confirmModalProps, setConfirmModalProps] = useState({
     title: '',
     message: '',
@@ -1181,6 +1273,7 @@ const App = ({ username, initialData, onLogout }: {
     };
     setTrips(prevTrips => [newTrip, ...prevTrips]);
     await syncTrip(newTrip);
+    setToastMessage('✅ Fahrt erfolgreich gespeichert!');
 
     if (tripToStart) {
         setAssignedTrips(prev => prev.filter(t => t.id !== tripToStart.id));
@@ -1228,6 +1321,7 @@ const App = ({ username, initialData, onLogout }: {
     };
     setExpenses(prevExpenses => [newExpense, ...prevExpenses]);
     syncExpense(newExpense);
+    setToastMessage('✅ Ausgabe erfolgreich gespeichert!');
   };
 
   const handleReimburseExpense = (id: string) => {
@@ -1282,10 +1376,33 @@ const App = ({ username, initialData, onLogout }: {
         newlySettledTrips.forEach(syncTrip);
         newlyReimbursedExpenses.forEach(syncExpense);
         setIsConfirmModalOpen(false);
+        setToastMessage('✅ Alle Posten wurden abgerechnet.');
       },
       confirmButtonText: 'Ja, alles abrechnen', isDestructive: false,
     });
     setIsConfirmModalOpen(true);
+  };
+  
+    const handleSendSupportTicket = async (message: string, attachedTripId: string | null) => {
+      try {
+          const response = await fetch(GOOGLE_SHEET_URL, {
+              method: 'POST',
+              body: JSON.stringify({
+                  dataType: 'support_ticket',
+                  username,
+                  message,
+                  attachedTripId: attachedTripId || '',
+              }),
+          });
+          const result = await response.json();
+          if (result.status !== 'success') throw new Error(result.message);
+          
+          setToastMessage('✅ Support-Ticket erfolgreich gesendet!');
+          setIsSupportModalOpen(false);
+      } catch (error: any) {
+          console.error("Failed to send support ticket:", error);
+          setToastMessage(`❌ Fehler: ${error.message || 'Ticket konnte nicht gesendet werden.'}`);
+      }
   };
 
   const { openCashCollected, openInvoiceIssued, openExpenses, openMyEarnings, amountToBoss } = useMemo(() => {
@@ -1452,6 +1569,7 @@ const App = ({ username, initialData, onLogout }: {
                 <h1>Fahrtenbuch</h1>
                 <div className="header-actions">
                     <button className="header-btn" onClick={() => setIsArchiveOpen(true)}>Archiv</button>
+                    <button className="header-btn" onClick={() => setIsSupportModalOpen(true)}>Support</button>
                     <button className="logout-btn" onClick={onLogout}>Logout</button>
                 </div>
             </div>
@@ -1465,7 +1583,9 @@ const App = ({ username, initialData, onLogout }: {
         <AddTripModal isOpen={isTripModalOpen} onClose={() => setIsTripModalOpen(false)} onSave={handleAddTrip} initialData={tripToStart || undefined} />
         <AddExpenseModal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} onSave={handleAddExpense} />
         <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} {...confirmModalProps} />
+        <SupportModal isOpen={isSupportModalOpen} onClose={() => setIsSupportModalOpen(false)} onSubmit={handleSendSupportTicket} openTrips={openTrips} />
         {isArchiveOpen && <ArchiveView trips={trips} expenses={expenses} onClose={() => setIsArchiveOpen(false)} />}
+        <Toast message={toastMessage} onClear={() => setToastMessage('')} />
     </>
   );
 };

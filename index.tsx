@@ -1011,7 +1011,11 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     initialAssignedTrips: AssignedTrip[],
     onLogout: () => void 
 }) => {
-    const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
+    const [detailView, setDetailView] = useState<{
+        monthKey: string;
+        filterType: 'all' | 'plate' | 'driver';
+        filterValue: string;
+    } | null>(null);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [cockpitTrips, setCockpitTrips] = useState<AssignedTrip[]>(initialAssignedTrips);
     const [toastMessage, setToastMessage] = useState('');
@@ -1049,8 +1053,8 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
             if (!acc[monthKey]) {
                 acc[monthKey] = {
                     totalRevenue: 0,
-                    byPlate: {} as Record<string, number>,
-                    byDriver: {} as Record<string, number>,
+                    byPlate: {} as Record<string, { revenue: number, count: number }>,
+                    byDriver: {} as Record<string, { revenue: number, count: number }>,
                     trips: [] as Trip[],
                 };
             }
@@ -1058,13 +1062,28 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
             const revenue = trip.payment.amount;
             acc[monthKey].totalRevenue += revenue;
             acc[monthKey].trips.push(trip);
+
             const plate = trip.licensePlate;
-            acc[monthKey].byPlate[plate] = (acc[monthKey].byPlate[plate] || 0) + revenue;
+            if (!acc[monthKey].byPlate[plate]) {
+                acc[monthKey].byPlate[plate] = { revenue: 0, count: 0 };
+            }
+            acc[monthKey].byPlate[plate].revenue += revenue;
+            acc[monthKey].byPlate[plate].count += 1;
+
             const driver = trip.username || 'Unbekannt';
-            acc[monthKey].byDriver[driver] = (acc[monthKey].byDriver[driver] || 0) + revenue;
+             if (!acc[monthKey].byDriver[driver]) {
+                acc[monthKey].byDriver[driver] = { revenue: 0, count: 0 };
+            }
+            acc[monthKey].byDriver[driver].revenue += revenue;
+            acc[monthKey].byDriver[driver].count += 1;
             
             return acc;
-        }, {} as Record<string, { totalRevenue: number, byPlate: Record<string, number>, byDriver: Record<string, number>, trips: Trip[] }>);
+        }, {} as Record<string, { 
+            totalRevenue: number, 
+            byPlate: Record<string, { revenue: number, count: number }>, 
+            byDriver: Record<string, { revenue: number, count: number }>, 
+            trips: Trip[] 
+        }>);
         
         Object.values(groupedByMonth).forEach(month => {
             month.trips.sort((a, b) => new Date(b.id.substring(0, 24)).getTime() - new Date(a.id.substring(0, 24)).getTime());
@@ -1109,27 +1128,43 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
         }
     };
 
-    if (selectedMonthKey && statsByMonth[selectedMonthKey]) {
-        const monthData = statsByMonth[selectedMonthKey];
+    if (detailView) {
+        const { monthKey, filterType, filterValue } = detailView;
+        const monthData = statsByMonth[monthKey];
+
+        const getTitle = () => {
+            let filterLabel = '';
+            if (filterType === 'plate') filterLabel = `Fahrzeug ${filterValue}`;
+            if (filterType === 'driver') filterLabel = `Fahrer ${filterValue}`;
+            const baseTitle = `Details: ${formatMonth(monthKey)}`;
+            return `${baseTitle}${filterLabel ? ` - ${filterLabel}` : ''}`;
+        };
+
+        const filteredTrips = monthData.trips.filter(trip => {
+            if (filterType === 'plate') return trip.licensePlate === filterValue;
+            if (filterType === 'driver') return (trip.username || 'Unbekannt') === filterValue;
+            return true; // 'all' case
+        });
+
         return (
             <>
                 <header>
                     <div className="header-content">
-                        <button className="header-btn" onClick={() => setSelectedMonthKey(null)}>Zurück</button>
-                        <h1 style={{fontSize: '1.2rem'}}>Details: {formatMonth(selectedMonthKey)}</h1>
+                        <button className="header-btn" onClick={() => setDetailView(null)}>Zurück</button>
+                        <h1 style={{fontSize: '1.2rem', textAlign: 'center'}}>{getTitle()}</h1>
                          <button className="logout-btn" onClick={onLogout}>Logout</button>
                     </div>
                 </header>
                 <main className="boss-container">
                     <div className="list-container">
-                        {monthData.trips.map(trip => (
+                        {filteredTrips.length > 0 ? filteredTrips.map(trip => (
                              <div key={trip.id} className="trip-card boss-trip-card">
                                 <div className="card-header">
                                     <div className="card-path">
                                         <span className="license-plate-badge">{trip.licensePlate}</span>
                                         <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                                     </div>
-                                    <span className="boss-trip-date">{formatDate(trip.id)}</span>
+                                    <span className="boss-trip-date">{formatTripDateForDisplay(trip.id)}</span>
                                 </div>
                                 <div className="card-details">
                                     <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
@@ -1138,7 +1173,12 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                                     Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
                                 </div>
                             </div>
-                        ))}
+                        )) : (
+                           <div className="empty-state">
+                                <h2>Keine Fahrten gefunden</h2>
+                                <p>Für diese Auswahl wurden keine Fahrten erfasst.</p>
+                            </div>
+                        )}
                     </div>
                 </main>
             </>
@@ -1203,8 +1243,8 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                         const sortedDrivers = Object.keys(monthData.byDriver).sort();
 
                         return (
-                            <div key={monthKey} className="boss-month-section" onClick={() => setSelectedMonthKey(monthKey)} role="button" tabIndex={0}>
-                                <div className="boss-month-header">
+                            <div key={monthKey} className="boss-month-section">
+                                <div className="boss-month-header" onClick={() => setDetailView({ monthKey, filterType: 'all', filterValue: 'all' })} role="button" tabIndex={0}>
                                     <h2>{formatMonth(monthKey)}</h2>
                                     <div className="boss-month-total">
                                         <span>Gesamtumsatz:</span>
@@ -1218,14 +1258,14 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                                             <thead>
                                                 <tr>
                                                     <th>Kennzeichen</th>
-                                                    <th>Umsatz</th>
+                                                    <th>Umsatz (Anzahl)</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {sortedPlates.map(plate => (
-                                                    <tr key={plate}>
+                                                    <tr key={plate} onClick={() => setDetailView({ monthKey, filterType: 'plate', filterValue: plate })}>
                                                         <td>{plate}</td>
-                                                        <td>{monthData.byPlate[plate].toFixed(2)} €</td>
+                                                        <td>{monthData.byPlate[plate].revenue.toFixed(2)} € ({monthData.byPlate[plate].count})</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1237,14 +1277,14 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
                                             <thead>
                                                 <tr>
                                                     <th>Fahrer</th>
-                                                    <th>Umsatz</th>
+                                                    <th>Umsatz (Anzahl)</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {sortedDrivers.map(driver => (
-                                                    <tr key={driver}>
+                                                    <tr key={driver} onClick={() => setDetailView({ monthKey, filterType: 'driver', filterValue: driver })}>
                                                         <td>{driver}</td>
-                                                        <td>{monthData.byDriver[driver].toFixed(2)} €</td>
+                                                        <td>{monthData.byDriver[driver].revenue.toFixed(2)} € ({monthData.byDriver[driver].count})</td>
                                                     </tr>
                                                 ))}
                                             </tbody>

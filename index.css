@@ -986,7 +986,6 @@ header h1 {
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     margin-bottom: 25px;
     overflow: hidden;
-    cursor: pointer;
     transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 .boss-month-section:hover {
@@ -1002,6 +1001,7 @@ header h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    cursor: pointer;
 }
 
 .boss-month-header h2 {
@@ -1066,6 +1066,16 @@ header h1 {
     font-weight: bold;
     color: var(--positive-color);
 }
+
+.boss-stats-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.boss-stats-table tbody tr:hover {
+    background-color: var(--background-color);
+}
+
 
 .boss-trip-card {
     border-left-color: var(--secondary-color);

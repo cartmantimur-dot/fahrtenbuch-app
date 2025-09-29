@@ -111,6 +111,19 @@ header h1 {
   gap: 15px;
 }
 
+.date-header {
+  margin-top: 25px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--secondary-color);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.list-container > .date-header:first-of-type {
+  margin-top: 0;
+}
+
 .empty-state {
   text-align: center;
   margin-top: 50px;
@@ -167,6 +180,15 @@ header h1 {
     font-weight: 500;
 }
 
+.trip-date {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--secondary-color);
+  white-space: nowrap;
+  margin-left: 10px;
+  align-self: flex-start;
+}
+
 .card-path {
   display: flex;
   flex-direction: column;
@@ -204,6 +226,20 @@ header h1 {
     font-size: 0.8rem;
     font-weight: 500;
 }
+
+.edited-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--warning-bg-color);
+    color: var(--warning-color);
+    border: 1px solid var(--warning-color);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
 
 .card-notes {
   background-color: #f8f9fa;
@@ -258,6 +294,21 @@ header h1 {
 .settle-btn:disabled, .reimburse-btn:disabled {
   background-color: var(--positive-color);
   cursor: default;
+}
+
+.edit-btn {
+    background-color: var(--warning-color);
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+    margin-right: auto; /* Pushes it to the left */
+}
+.edit-btn:hover {
+    background-color: #d35400; /* Darker orange */
 }
 
 .expense-amount {

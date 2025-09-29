@@ -33,6 +33,15 @@ interface Trip {
   iCollectedPayment: boolean;
   isSettled: boolean;
   notes?: string;
+  wurdeBearbeitet?: boolean;
+  bearbeitungsdatum?: string;
+  originalStart?: string;
+  originalZiel?: string;
+  originalBetrag?: number;
+  originalZahlungsart?: 'cash' | 'invoice';
+  originalFahreranzahl?: number;
+  originalIchHabeKassiert?: boolean;
+  originalNotizen?: string;
 }
 
 interface Expense {
@@ -282,12 +291,13 @@ const CustomerBookingForm = () => {
 };
 
 
-// The modal component for adding a new trip
-const AddTripModal = ({ isOpen, onClose, onSave, initialData }: { 
+// The modal component for adding/editing a new trip
+const TripFormModal = ({ isOpen, onClose, onSave, initialData, tripToEdit }: { 
     isOpen: boolean, 
     onClose: () => void, 
     onSave: (trip: Omit<Trip, 'id' | 'isSettled' | 'username'>) => void,
-    initialData?: Partial<AssignedTrip> 
+    initialData?: Partial<AssignedTrip>,
+    tripToEdit?: Trip | null
 }) => {
   const [licensePlate, setLicensePlate] = useState('');
   const [start, setStart] = useState('');
@@ -297,15 +307,26 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
   const [numberOfDrivers, setNumberOfDrivers] = useState('1');
   const [iCollectedPayment, setICollectedPayment] = useState(true);
   const [notes, setNotes] = useState('');
+  
+  const isEditMode = !!tripToEdit;
 
   useEffect(() => {
-    if (initialData) {
-        setStart(initialData.start || '');
-        setDestination(initialData.destination || '');
-        setAmount(initialData.amount ? String(initialData.amount) : '');
-        setNotes(initialData.notes || '');
-    }
-  }, [initialData]);
+      const data = tripToEdit || initialData;
+      if (isOpen && data) {
+          setLicensePlate('licensePlate' in data ? data.licensePlate || '' : '');
+          setStart(data.start || '');
+          setDestination(data.destination || '');
+          if ('payment' in data && data.payment) {
+              setPaymentType(data.payment.type);
+              setAmount(String(data.payment.amount));
+          } else if ('amount' in data) {
+              setAmount(String(data.amount));
+          }
+          if ('numberOfDrivers' in data && data.numberOfDrivers) setNumberOfDrivers(String(data.numberOfDrivers));
+          if ('iCollectedPayment' in data) setICollectedPayment(data.iCollectedPayment);
+          setNotes(data.notes || '');
+      }
+  }, [isOpen, tripToEdit, initialData]);
 
 
   if (!isOpen) {
@@ -350,7 +371,7 @@ const AddTripModal = ({ isOpen, onClose, onSave, initialData }: {
   return (
     <div className="modal-overlay" onClick={resetAndClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h2>Fahrt erfassen</h2>
+        <h2>{isEditMode ? 'Fahrt bearbeiten' : 'Fahrt erfassen'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="license-plate">Kennzeichen</label>
@@ -654,6 +675,50 @@ const SupportModal = ({ isOpen, onClose, onSubmit, openTrips }: {
             </div>
         </div>
     );
+};
+
+const getRelativeDateHeader = (isoString: string) => {
+    try {
+        if (!isoString) return "Unbekanntes Datum";
+        const date = new Date(isoString.substring(0, 24));
+        if (isNaN(date.getTime())) return "Unbekanntes Datum";
+
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // Reset time component for accurate date comparison
+        today.setHours(0, 0, 0, 0);
+        yesterday.setHours(0, 0, 0, 0);
+        date.setHours(0, 0, 0, 0);
+
+        if (date.getTime() === today.getTime()) return "Heute";
+        if (date.getTime() === yesterday.getTime()) return "Gestern";
+
+        return date.toLocaleDateString('de-DE', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+        });
+    } catch {
+        return "Unbekanntes Datum";
+    }
+};
+
+const formatTripDateForDisplay = (isoString: string) => {
+    try {
+        if (!isoString) return "";
+        const date = new Date(isoString.substring(0, 24));
+        if (isNaN(date.getTime())) return "";
+
+        return date.toLocaleDateString('de-DE', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit'
+        });
+    } catch {
+        return "";
+    }
 };
 
 
@@ -1222,6 +1287,7 @@ const App = ({ username, initialData, onLogout }: {
   const [assignedTrips, setAssignedTrips] = useState<AssignedTrip[]>(initialData.assignedTrips);
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToStart, setTripToStart] = useState<AssignedTrip | null>(null);
+  const [tripToEdit, setTripToEdit] = useState<Trip | null>(null);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<'trips' | 'expenses' | 'stats'>('trips');
@@ -1276,29 +1342,63 @@ const App = ({ username, initialData, onLogout }: {
 
   const handleStartAssignedTrip = (assignedTrip: AssignedTrip) => {
     setTripToStart(assignedTrip);
+    setTripToEdit(null);
     setIsTripModalOpen(true);
   };
+  
+  const handleOpenEditModal = (trip: Trip) => {
+    setTripToStart(null);
+    setTripToEdit(trip);
+    setIsTripModalOpen(true);
+  };
+  
+  const handleCloseTripModal = () => {
+    setIsTripModalOpen(false);
+    setTripToStart(null);
+    setTripToEdit(null);
+  };
 
-  const handleAddTrip = async (newTripData: Omit<Trip, 'id' | 'isSettled' | 'username'>) => {
-    const newTrip: Trip = {
-      id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
-      ...newTripData, isSettled: false,
-    };
-    setTrips(prevTrips => [newTrip, ...prevTrips]);
-    await syncTrip(newTrip);
-    setToastMessage('✅ Fahrt erfolgreich gespeichert!');
+  const handleSaveTrip = async (newTripData: Omit<Trip, 'id' | 'isSettled' | 'username'>) => {
+    if (tripToEdit) {
+        // Edit logic
+        const updatedTrip: Trip = {
+            ...tripToEdit,
+            ...newTripData,
+            wurdeBearbeitet: true,
+            bearbeitungsdatum: new Date().toISOString(),
+            originalStart: tripToEdit.start,
+            originalZiel: tripToEdit.destination,
+            originalBetrag: tripToEdit.payment.amount,
+            originalZahlungsart: tripToEdit.payment.type,
+            originalFahreranzahl: tripToEdit.numberOfDrivers,
+            originalIchHabeKassiert: tripToEdit.iCollectedPayment,
+            originalNotizen: tripToEdit.notes || "",
+        };
+        setTrips(prevTrips => prevTrips.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+        await syncTrip(updatedTrip);
+        setToastMessage('✅ Fahrt erfolgreich bearbeitet!');
+    } else {
+        // Add logic
+        const newTrip: Trip = {
+          id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
+          ...newTripData, isSettled: false, wurdeBearbeitet: false
+        };
+        setTrips(prevTrips => [newTrip, ...prevTrips]);
+        await syncTrip(newTrip);
+        setToastMessage('✅ Fahrt erfolgreich gespeichert!');
 
-    if (tripToStart) {
-        setAssignedTrips(prev => prev.filter(t => t.id !== tripToStart.id));
-        try {
-            await fetch(GOOGLE_SHEET_URL, {
-                method: 'POST',
-                body: JSON.stringify({ dataType: 'remove_assigned_trip', id: tripToStart.id, username }),
-            });
-        } catch (error) {
-            console.error("Failed to remove assigned trip:", error);
+        if (tripToStart) {
+            setAssignedTrips(prev => prev.filter(t => t.id !== tripToStart.id));
+            try {
+                await fetch(GOOGLE_SHEET_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ dataType: 'remove_assigned_trip', id: tripToStart.id, username }),
+                });
+            } catch (error) {
+                console.error("Failed to remove assigned trip:", error);
+            }
+            setTripToStart(null);
         }
-        setTripToStart(null);
     }
   };
 
@@ -1419,7 +1519,7 @@ const App = ({ username, initialData, onLogout }: {
     return { openCashCollected, openInvoiceIssued, openExpenses, openMyEarnings, amountToBoss };
   }, [trips, expenses]);
 
-  const openTrips = useMemo(() => trips.filter(trip => !trip.isSettled), [trips]);
+  const openTrips = useMemo(() => trips.filter(trip => !trip.isSettled).sort((a, b) => new Date(b.id.substring(0, 24)).getTime() - new Date(a.id.substring(0, 24)).getTime()), [trips]);
   const openExpensesList = useMemo(() => expenses.filter(expense => !expense.isReimbursed), [expenses]);
   
   const formatAssignedTripTime = (isoString: string) => {
@@ -1433,6 +1533,7 @@ const App = ({ username, initialData, onLogout }: {
     switch (activeView) {
         case 'trips':
             const visibleAssignedTrips = assignedTrips.filter(t => t.status !== 'declined');
+            let lastDateHeader: string | null = null;
             return (
                 <>
                     {visibleAssignedTrips.length > 0 && (
@@ -1475,30 +1576,41 @@ const App = ({ username, initialData, onLogout }: {
                         </div>
                     ) : openTrips.length > 0 && (
                         <div className="list-container">
-                            {openTrips.map(trip => (
-                                <div key={trip.id} className="trip-card">
-                                    <div className="card-header">
-                                        <div className="card-path">
-                                            <span className="license-plate-badge">{trip.licensePlate}</span>
-                                            <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                            {openTrips.map(trip => {
+                                const dateHeader = getRelativeDateHeader(trip.id);
+                                const showDateHeader = dateHeader !== lastDateHeader;
+                                lastDateHeader = dateHeader;
+                                return (
+                                    <React.Fragment key={trip.id}>
+                                        {showDateHeader && <h3 className="date-header">{dateHeader}</h3>}
+                                        <div className="trip-card">
+                                            <div className="card-header">
+                                                <div className="card-path">
+                                                    <span className="license-plate-badge">{trip.licensePlate}</span>
+                                                    <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                                                </div>
+                                                <span className="trip-date">{formatTripDateForDisplay(trip.id)}</span>
+                                            </div>
+                                            <div className="card-details">
+                                                {trip.wurdeBearbeitet && (<span className="edited-badge">Bearbeitet ✔</span>)}
+                                                {trip.numberOfDrivers > 1 && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
+                                                <span className="detail-badge">{trip.iCollectedPayment ? 'Bezahlung erhalten' : 'Bezahlung durch Kollegen'}</span>
+                                            </div>
+                                            {trip.notes && (<div className="card-notes"><p>{trip.notes}</p></div>)}
+                                            <div className={`card-payment ${trip.payment.type}`}>
+                                                {trip.payment.type === 'cash' ? `Bar erhalten: ${trip.payment.amount.toFixed(2)} €` : `Per Rechnung: ${trip.payment.amount.toFixed(2)} €`}
+                                            </div>
+                                            <div className="card-actions">
+                                              {!trip.wurdeBearbeitet && (<button onClick={() => handleOpenEditModal(trip)} className="edit-btn">Bearbeiten</button>)}
+                                              <button onClick={() => handleSettleTrip(trip.id)} className="settle-btn">Mit Chef abrechnen</button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="card-details">
-                                        {trip.numberOfDrivers > 1 && (<span className="detail-badge">Gruppenfahrt ({trip.numberOfDrivers} Fahrer)</span>)}
-                                        <span className="detail-badge">{trip.iCollectedPayment ? 'Bezahlung erhalten' : 'Bezahlung durch Kollegen'}</span>
-                                    </div>
-                                    {trip.notes && (<div className="card-notes"><p>{trip.notes}</p></div>)}
-                                    <div className={`card-payment ${trip.payment.type}`}>
-                                        {trip.payment.type === 'cash' ? `Bar erhalten: ${trip.payment.amount.toFixed(2)} €` : `Per Rechnung: ${trip.payment.amount.toFixed(2)} €`}
-                                    </div>
-                                    <div className="card-actions">
-                                      <button onClick={() => handleSettleTrip(trip.id)} className="settle-btn">Mit Chef abrechnen</button>
-                                    </div>
-                                </div>
-                            ))}
+                                    </React.Fragment>
+                                );
+                            })}
                         </div>
                     )}
-                    <button className="add-fab" onClick={() => { setTripToStart(null); setIsTripModalOpen(true); }} aria-label="Fahrt hinzufügen">+</button>
+                    <button className="add-fab" onClick={() => { setTripToStart(null); setTripToEdit(null); setIsTripModalOpen(true); }} aria-label="Fahrt hinzufügen">+</button>
                 </>
             );
         case 'expenses':
@@ -1578,7 +1690,13 @@ const App = ({ username, initialData, onLogout }: {
             <button className={`nav-btn ${activeView === 'expenses' ? 'active' : ''}`} onClick={() => setActiveView('expenses')}>Ausgaben</button>
             <button className={`nav-btn ${activeView === 'stats' ? 'active' : ''}`} onClick={() => setActiveView('stats')}>Statistik</button>
         </nav>
-        <AddTripModal isOpen={isTripModalOpen} onClose={() => setIsTripModalOpen(false)} onSave={handleAddTrip} initialData={tripToStart || undefined} />
+        <TripFormModal 
+            isOpen={isTripModalOpen} 
+            onClose={handleCloseTripModal} 
+            onSave={handleSaveTrip} 
+            initialData={tripToStart || undefined} 
+            tripToEdit={tripToEdit}
+        />
         <AddExpenseModal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} onSave={handleAddExpense} />
         <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} {...confirmModalProps} />
         <SupportModal isOpen={isSupportModalOpen} onClose={() => setIsSupportModalOpen(false)} onSubmit={handleSendSupportTicket} openTrips={openTrips} />
@@ -1760,7 +1878,7 @@ const AppContainer = () => {
                 if (result.status === 'error') throw new Error(result.message);
                 
                 setAppData({
-                    trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, isSettled: t.isSettled || false })),
+                    trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, isSettled: t.isSettled || false, wurdeBearbeitet: t.wurdeBearbeitet === true })),
                     expenses: (result.expenses || []).filter((e: any) => e && e.id).map((e: any) => ({ ...e, isReimbursed: e.isReimbursed || false })),
                     assignedTrips: (result.assignedTrips || []).filter((t: any) => t && t.id),
                     drivers: result.drivers || [],

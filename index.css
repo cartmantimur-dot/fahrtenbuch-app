@@ -1258,6 +1258,29 @@ header h1 {
     }
 }
 
+/* Filter Styles */
+.filter-container {
+  background-color: var(--surface-color);
+  padding: 15px 20px 5px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.filter-container .form-group {
+  flex: 1;
+  margin-bottom: 10px;
+}
+
+.filter-container label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--secondary-color);
+}
+
 
 @media (max-width: 600px) {
     .stats-grid {
@@ -1268,5 +1291,9 @@ header h1 {
     }
     .boss-stats-grid {
         grid-template-columns: 1fr;
+    }
+    .filter-container {
+      flex-direction: column;
+      align-items: stretch;
     }
 }

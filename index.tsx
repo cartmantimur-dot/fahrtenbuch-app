@@ -1294,6 +1294,8 @@ const App = ({ username, initialData, onLogout }: {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [filterDestination, setFilterDestination] = useState('');
+  const [filterLicensePlate, setFilterLicensePlate] = useState('');
   const [confirmModalProps, setConfirmModalProps] = useState({
     title: '',
     message: '',
@@ -1522,6 +1524,18 @@ const App = ({ username, initialData, onLogout }: {
   const openTrips = useMemo(() => trips.filter(trip => !trip.isSettled).sort((a, b) => new Date(b.id.substring(0, 24)).getTime() - new Date(a.id.substring(0, 24)).getTime()), [trips]);
   const openExpensesList = useMemo(() => expenses.filter(expense => !expense.isReimbursed), [expenses]);
   
+  const filteredOpenTrips = useMemo(() => {
+    return openTrips.filter(trip => {
+      const destinationMatch = filterDestination
+        ? trip.destination.toLowerCase().includes(filterDestination.toLowerCase())
+        : true;
+      const plateMatch = filterLicensePlate
+        ? trip.licensePlate === filterLicensePlate
+        : true;
+      return destinationMatch && plateMatch;
+    });
+  }, [openTrips, filterDestination, filterLicensePlate]);
+
   const formatAssignedTripTime = (isoString: string) => {
     if (!isoString) return "Zeit n.a.";
     const date = new Date(isoString);
@@ -1569,14 +1583,48 @@ const App = ({ username, initialData, onLogout }: {
                             )})}
                         </div>
                     )}
+
+                    {openTrips.length > 0 && (
+                      <div className="filter-container">
+                        <div className="form-group">
+                          <label htmlFor="filter-destination">Nach Ziel filtern</label>
+                          <input
+                            type="text"
+                            id="filter-destination"
+                            placeholder="Zielort eingeben..."
+                            value={filterDestination}
+                            onChange={(e) => setFilterDestination(e.target.value)}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label htmlFor="filter-plate">Nach Kennzeichen filtern</label>
+                          <select
+                            id="filter-plate"
+                            value={filterLicensePlate}
+                            onChange={(e) => setFilterLicensePlate(e.target.value)}
+                          >
+                            <option value="">Alle Kennzeichen</option>
+                            {LICENSE_PLATES.map(lp => (
+                              <option key={lp} value={lp}>{lp}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
                     {openTrips.length === 0 && visibleAssignedTrips.length === 0 ? (
                         <div className="empty-state">
                             <h2>Willkommen, {username}!</h2>
                             <p>Keine offenen Fahrten. Fügen Sie eine neue Fahrt über das '+' Symbol hinzu oder schauen Sie ins Archiv.</p>
                         </div>
-                    ) : openTrips.length > 0 && (
+                    ) : filteredOpenTrips.length === 0 ? (
+                        <div className="empty-state">
+                            <h2>Keine Fahrten gefunden</h2>
+                            <p>Ihre Filterkriterien ergaben keine Treffer. Bitte passen Sie die Filter an.</p>
+                        </div>
+                    ) : (
                         <div className="list-container">
-                            {openTrips.map(trip => {
+                            {filteredOpenTrips.map(trip => {
                                 const dateHeader = getRelativeDateHeader(trip.id);
                                 const showDateHeader = dateHeader !== lastDateHeader;
                                 lastDateHeader = dateHeader;

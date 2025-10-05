@@ -1086,6 +1086,85 @@ header h1 {
     color: var(--secondary-color);
 }
 
+/* Plate Management Modal Styles */
+.plate-add-form {
+    margin-bottom: 20px;
+}
+
+.plate-input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.plate-input-group input {
+    flex-grow: 1;
+}
+
+.plate-input-group button {
+    padding: 0 20px;
+    flex-shrink: 0;
+}
+
+.plate-list {
+    max-height: 30vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 10px;
+    background-color: #f8f9fa;
+}
+
+.plate-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: var(--surface-color);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.plate-item:last-child {
+    margin-bottom: 0;
+}
+
+.plate-item span {
+    font-weight: 500;
+}
+
+.delete-plate-btn {
+    background-color: #ecf0f1;
+    color: var(--danger-color);
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    font-weight: bold;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.delete-plate-btn:hover:not(:disabled) {
+    background-color: var(--danger-color);
+    color: white;
+}
+.delete-plate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.plate-empty-text {
+    text-align: center;
+    color: #7f8c8d;
+    padding: 20px 0;
+}
+
 /* Cockpit Styles */
 .cockpit-section {
     background-color: var(--surface-color);

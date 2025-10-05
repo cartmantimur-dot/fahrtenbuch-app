@@ -2,16 +2,6 @@ import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
 
-const LICENSE_PLATES = [
-  "BM-PP 299",
-  "BM-LL 3016",
-  "BM-MD 2011",
-  "BM-AV 2024",
-  "Leihwagen 1",
-  "Leihwagen 2",
-  "Test Wagen"
-];
-
 const GOOGLE_SHEET_URL: string = 'https://script.google.com/macros/s/AKfycbwnvIj19oSB-UY_dZ2_EbSsg_7G7O6LH-UFfhs7_bDB5Fsq35-jFpdxsG7oCqdoHzolvg/exec';
 
 // WICHTIG: Ersetzen Sie die folgende Nummer durch Ihre echte WhatsApp-Nummer im internationalen Format (z.B. 491761234567 für Deutschland).
@@ -292,12 +282,13 @@ const CustomerBookingForm = () => {
 
 
 // The modal component for adding/editing a new trip
-const TripFormModal = ({ isOpen, onClose, onSave, initialData, tripToEdit }: { 
+const TripFormModal = ({ isOpen, onClose, onSave, initialData, tripToEdit, plates }: { 
     isOpen: boolean, 
     onClose: () => void, 
     onSave: (trip: Omit<Trip, 'id' | 'isSettled' | 'username'>) => void,
     initialData?: Partial<AssignedTrip>,
-    tripToEdit?: Trip | null
+    tripToEdit?: Trip | null,
+    plates: string[]
 }) => {
   const [licensePlate, setLicensePlate] = useState('');
   const [start, setStart] = useState('');
@@ -382,7 +373,7 @@ const TripFormModal = ({ isOpen, onClose, onSave, initialData, tripToEdit }: {
               required
             >
               <option value="" disabled>Bitte auswählen...</option>
-              {LICENSE_PLATES.map(lp => (
+              {plates.map(lp => (
                 <option key={lp} value={lp}>{lp}</option>
               ))}
             </select>
@@ -672,6 +663,114 @@ const SupportModal = ({ isOpen, onClose, onSubmit, openTrips }: {
                         <button type="submit" className="btn-primary">Ticket senden</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    );
+};
+
+const ManagePlatesModal = ({ isOpen, onClose, plates, onAdd, onDelete }: {
+    isOpen: boolean;
+    onClose: () => void;
+    plates: string[];
+    onAdd: (plate: string) => Promise<void>;
+    onDelete: (plate: string) => Promise<void>;
+}) => {
+    const [newPlate, setNewPlate] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    if (!isOpen) return null;
+
+    const handleAdd = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!newPlate.trim()) return;
+        setError('');
+        setIsLoading(true);
+        try {
+            await onAdd(newPlate.trim());
+            setNewPlate('');
+        } catch (err: any) {
+            setError(err.message || 'Fehler beim Hinzufügen.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDelete = async (plate: string) => {
+        if (!window.confirm(`Möchten Sie das Kennzeichen "${plate}" wirklich löschen?`)) {
+            return;
+        }
+        setError('');
+        setIsLoading(true);
+        try {
+            await onDelete(plate);
+        } catch (err: any)
+        {
+            setError(err.message || 'Fehler beim Löschen.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    const handleClose = () => {
+        setError('');
+        setNewPlate('');
+        onClose();
+    }
+
+    const sortedPlates = [...plates].sort();
+
+    return (
+        <div className="modal-overlay" onClick={handleClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Kennzeichen verwalten</h2>
+                <form onSubmit={handleAdd} className="plate-add-form">
+                    <div className="form-group">
+                        <label htmlFor="new-plate">Neues Kennzeichen</label>
+                        <div className="plate-input-group">
+                            <input
+                                type="text"
+                                id="new-plate"
+                                value={newPlate}
+                                onChange={(e) => setNewPlate(e.target.value)}
+                                placeholder="z.B. BM-AB 123"
+                                required
+                                disabled={isLoading}
+                            />
+                            <button type="submit" className="btn-primary" disabled={isLoading || !newPlate.trim()}>
+                                Hinzufügen
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                {error && <p className="auth-error">{error}</p>}
+
+                <div className="plate-list">
+                    {sortedPlates.length > 0 ? (
+                        sortedPlates.map(plate => (
+                            <div key={plate} className="plate-item">
+                                <span>{plate}</span>
+                                <button
+                                    className="delete-plate-btn"
+                                    onClick={() => handleDelete(plate)}
+                                    disabled={isLoading}
+                                    aria-label={`Kennzeichen ${plate} löschen`}
+                                >
+                                    &times;
+                                </button>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="plate-empty-text">Keine Kennzeichen angelegt.</p>
+                    )}
+                </div>
+
+                <div className="modal-actions">
+                    <button type="button" className="btn-secondary" onClick={handleClose} disabled={isLoading}>
+                        Schließen
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -1005,11 +1104,14 @@ Erwartetes JSON: {"start":"Blumenstr. 21","destination":"Westfalenhalle Dortmund
 
 
 // --- BOSS VIEW COMPONENT ---
-const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: { 
+const BossView = ({ trips, drivers, initialAssignedTrips, onLogout, plates, onAddPlate, onDeletePlate }: { 
     trips: Trip[], 
     drivers: string[], 
     initialAssignedTrips: AssignedTrip[],
-    onLogout: () => void 
+    onLogout: () => void,
+    plates: string[],
+    onAddPlate: (plate: string) => Promise<void>,
+    onDeletePlate: (plate: string) => Promise<void>
 }) => {
     const [detailView, setDetailView] = useState<{
         monthKey: string;
@@ -1017,6 +1119,7 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
         filterValue: string;
     } | null>(null);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+    const [isManagePlatesModalOpen, setIsManagePlatesModalOpen] = useState(false);
     const [cockpitTrips, setCockpitTrips] = useState<AssignedTrip[]>(initialAssignedTrips);
     const [toastMessage, setToastMessage] = useState('');
 
@@ -1187,11 +1290,19 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout }: {
     
     return (
         <>
+            <ManagePlatesModal
+                isOpen={isManagePlatesModalOpen}
+                onClose={() => setIsManagePlatesModalOpen(false)}
+                plates={plates}
+                onAdd={onAddPlate}
+                onDelete={onDeletePlate}
+            />
             <AssignTripModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} drivers={drivers} onTripAssigned={handleTripAssigned} />
             <header>
                 <div className="header-content">
                     <h1>Chef-Dashboard</h1>
                     <div className="header-actions">
+                         <button className="header-btn" onClick={() => setIsManagePlatesModalOpen(true)}>Kennzeichen</button>
                          <button className="header-btn" onClick={() => setIsAssignModalOpen(true)}>Fahrt zuweisen</button>
                         <button className="logout-btn" onClick={onLogout}>Logout</button>
                     </div>
@@ -1317,10 +1428,11 @@ const Toast = ({ message, onClear }: { message: string, onClear: () => void }) =
 };
 
 // Main App component for Drivers
-const App = ({ username, initialData, onLogout }: { 
+const App = ({ username, initialData, onLogout, plates }: { 
     username: string, 
     initialData: { trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[] },
-    onLogout: () => void 
+    onLogout: () => void,
+    plates: string[]
 }) => {
   const [trips, setTrips] = useState<Trip[]>(initialData.trips);
   const [expenses, setExpenses] = useState<Expense[]>(initialData.expenses);
@@ -1644,7 +1756,7 @@ const App = ({ username, initialData, onLogout }: {
                             onChange={(e) => setFilterLicensePlate(e.target.value)}
                           >
                             <option value="">Alle Kennzeichen</option>
-                            {LICENSE_PLATES.map(lp => (
+                            {plates.map(lp => (
                               <option key={lp} value={lp}>{lp}</option>
                             ))}
                           </select>
@@ -1784,6 +1896,7 @@ const App = ({ username, initialData, onLogout }: {
             onSave={handleSaveTrip} 
             initialData={tripToStart || undefined} 
             tripToEdit={tripToEdit}
+            plates={plates}
         />
         <AddExpenseModal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} onSave={handleAddExpense} />
         <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} {...confirmModalProps} />
@@ -1926,10 +2039,11 @@ const RegistrationScreen = ({ onRegister, onSwitchToLogin }: { onRegister: (user
 
 const AppContainer = () => {
     const [currentUser, setCurrentUser] = useState<string | null>(null);
-    const [appData, setAppData] = useState<{ trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[], drivers: string[] }>({ trips: [], expenses: [], assignedTrips: [], drivers: [] });
+    const [appData, setAppData] = useState<{ trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[], drivers: string[], plates: string[] }>({ trips: [], expenses: [], assignedTrips: [], drivers: [], plates: [] });
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [authView, setAuthView] = useState<'login' | 'register'>('login');
     const [isBookingMode, setIsBookingMode] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -1970,6 +2084,7 @@ const AppContainer = () => {
                     expenses: (result.expenses || []).filter((e: any) => e && e.id).map((e: any) => ({ ...e, isReimbursed: e.isReimbursed || false })),
                     assignedTrips: (result.assignedTrips || []).filter((t: any) => t && t.id),
                     drivers: result.drivers || [],
+                    plates: result.plates || [],
                 });
 
             } catch (error: any) {
@@ -1981,6 +2096,54 @@ const AppContainer = () => {
         };
         fetchData();
     }, [currentUser]);
+    
+    const handleAddPlate = async (plate: string) => {
+        if (!currentUser) throw new Error("Nicht angemeldet.");
+        if (appData.plates.some(p => p.toLowerCase() === plate.toLowerCase())) {
+            throw new Error("Dieses Kennzeichen existiert bereits.");
+        }
+
+        setAppData(prev => ({ ...prev, plates: [...prev.plates, plate] }));
+        
+        try {
+            const response = await fetch(GOOGLE_SHEET_URL, {
+                method: 'POST',
+                body: JSON.stringify({ dataType: 'add_plate', plate, username: currentUser }),
+            });
+            const result = await response.json();
+            if (result.status === 'error') {
+                setAppData(prev => ({ ...prev, plates: prev.plates.filter(p => p !== plate) }));
+                throw new Error(result.message);
+            }
+            setToastMessage('✅ Kennzeichen hinzugefügt!');
+        } catch(e: any) {
+             setAppData(prev => ({ ...prev, plates: prev.plates.filter(p => p !== plate) }));
+             throw e;
+        }
+    };
+
+    const handleDeletePlate = async (plate: string) => {
+        if (!currentUser) throw new Error("Nicht angemeldet.");
+        
+        const originalPlates = appData.plates;
+        setAppData(prev => ({ ...prev, plates: prev.plates.filter(p => p !== plate) }));
+        
+        try {
+            const response = await fetch(GOOGLE_SHEET_URL, {
+                method: 'POST',
+                body: JSON.stringify({ dataType: 'delete_plate', plate, username: currentUser }),
+            });
+            const result = await response.json();
+            if (result.status === 'error') {
+                setAppData(prev => ({ ...prev, plates: originalPlates }));
+                throw new Error(result.message);
+            }
+            setToastMessage('✅ Kennzeichen gelöscht!');
+        } catch(e: any) {
+            setAppData(prev => ({ ...prev, plates: originalPlates }));
+            throw e;
+        }
+    };
 
     const handleLogin = async (username: string, password: string) => {
         if (!GOOGLE_SHEET_URL) throw new Error("App ist nicht konfiguriert.");
@@ -2018,7 +2181,7 @@ const AppContainer = () => {
     const handleLogout = () => {
         localStorage.removeItem('fahrtenbuch-currentUser');
         setCurrentUser(null);
-        setAppData({ trips: [], expenses: [], assignedTrips: [], drivers: [] });
+        setAppData({ trips: [], expenses: [], assignedTrips: [], drivers: [], plates: [] });
         setAuthView('login');
     };
 
@@ -2042,10 +2205,23 @@ const AppContainer = () => {
     }
     
     if (currentUser.toLowerCase() === 'chef') {
-        return <BossView trips={appData.trips} drivers={appData.drivers} initialAssignedTrips={appData.assignedTrips} onLogout={handleLogout} />;
+        return <BossView 
+            trips={appData.trips} 
+            drivers={appData.drivers} 
+            initialAssignedTrips={appData.assignedTrips} 
+            onLogout={handleLogout} 
+            plates={appData.plates}
+            onAddPlate={handleAddPlate}
+            onDeletePlate={handleDeletePlate}
+        />;
     }
 
-    return <App username={currentUser} initialData={appData} onLogout={handleLogout} />;
+    return <App 
+        username={currentUser} 
+        initialData={appData} 
+        onLogout={handleLogout}
+        plates={appData.plates}
+    />;
 };
 
 const container = document.getElementById('root');

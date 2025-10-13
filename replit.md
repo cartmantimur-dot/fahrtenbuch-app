@@ -69,10 +69,11 @@ The app is configured for Replit's autoscale deployment:
 
 ## Recent Changes
 - **Oct 13, 2025**: Initial Replit environment setup
-  - Configured Vite for port 5000
-  - Added HMR configuration for Replit proxy
-  - Updated .gitignore for Node.js/Vite
-  - Set up deployment configuration
+  - Configured Vite for port 5000 with host 0.0.0.0
+  - Added `allowedHosts: true` to allow Replit proxy hosts
+  - Added HMR configuration for Replit proxy (clientPort 443)
+  - Updated .gitignore for Node.js/Vite projects
+  - Set up autoscale deployment configuration
 
 ## Notes
 - The app includes WhatsApp integration for customer booking requests

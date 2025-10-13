@@ -2158,14 +2158,28 @@ const AppContainer = () => {
                 method: 'POST',
                 body: JSON.stringify({ dataType: 'delete_plate', plate, username: currentUser }),
             });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP-Fehler: ${response.status}`);
+            }
+            
             const result = await response.json();
+            console.log('Delete plate response:', result);
+            
             if (result.status === 'error') {
                 setAppData(prev => ({ ...prev, plates: originalPlates }));
-                throw new Error(result.message);
+                throw new Error(result.message || 'Fehler beim Löschen des Kennzeichens.');
             }
+            
+            if (result.status !== 'success' && !result.status?.includes('gelöscht')) {
+                setAppData(prev => ({ ...prev, plates: originalPlates }));
+                throw new Error('Unerwartete Antwort vom Server.');
+            }
+            
             setToastMessage('✅ Kennzeichen gelöscht!');
         } catch(e: any) {
             setAppData(prev => ({ ...prev, plates: originalPlates }));
+            console.error('Error deleting plate:', e);
             throw e;
         }
     };

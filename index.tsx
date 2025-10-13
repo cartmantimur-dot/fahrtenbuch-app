@@ -64,7 +64,7 @@ const CustomerBookingForm = () => {
     const DUSSELDORF_AIRPORT = { street: 'Flughafen Düsseldorf (DUS)', plz: '40474' };
 
     const [pickupLocations, setPickupLocations] = useState<Address[]>([{ street: '', plz: '' }]);
-    const [destination, setDestination] = useState<Address>({ street: '', plz: '' });
+    const [destinations, setDestinations] = useState<Address[]>([{ street: '', plz: '' }]);
     const [isAirportPickup, setIsAirportPickup] = useState(false);
     const [flightNumber, setFlightNumber] = useState('');
     const [pickupDate, setPickupDate] = useState('');
@@ -80,8 +80,10 @@ const CustomerBookingForm = () => {
         setPickupLocations(newLocations);
     };
 
-    const handleDestinationChange = (field: keyof Address, value: string) => {
-        setDestination(prev => ({ ...prev, [field]: value }));
+    const handleDestinationChange = (index: number, field: keyof Address, value: string) => {
+        const newDestinations = [...destinations];
+        newDestinations[index][field] = value;
+        setDestinations(newDestinations);
     };
 
     const addPickupLocation = () => {
@@ -93,6 +95,16 @@ const CustomerBookingForm = () => {
             setPickupLocations(pickupLocations.filter((_, i) => i !== index));
         }
     };
+
+    const addDestination = () => {
+        setDestinations([...destinations, { street: '', plz: '' }]);
+    };
+    
+    const removeDestination = (index: number) => {
+        if (destinations.length > 1) {
+            setDestinations(destinations.filter((_, i) => i !== index));
+        }
+    };
     
     const setPickupAsAirport = (airport: Address) => {
         const newLocations = [...pickupLocations];
@@ -102,14 +114,17 @@ const CustomerBookingForm = () => {
     };
 
     const setDestinationAsAirport = (airport: Address) => {
-        setDestination(airport);
+        const newDestinations = [...destinations];
+        newDestinations[0] = airport;
+        setDestinations(newDestinations);
     };
 
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const arePickupsInvalid = pickupLocations.some(loc => !loc.street || !loc.plz);
-        if (!customerName || !customerPhone || !passengerCount || !destination.street || !destination.plz || !pickupDate || !pickupTime || arePickupsInvalid) {
+        const areDestinationsInvalid = destinations.some(loc => !loc.street || !loc.plz);
+        if (!customerName || !customerPhone || !passengerCount || !pickupDate || !pickupTime || arePickupsInvalid || areDestinationsInvalid) {
             setErrorMessage('Bitte füllen Sie alle erforderlichen Felder aus (inkl. PLZ).');
             return;
         }
@@ -123,7 +138,9 @@ const CustomerBookingForm = () => {
             .map(loc => `- ${loc.street}, ${loc.plz}`)
             .join('\n');
 
-        const destinationString = `${destination.street}, ${destination.plz}`;
+        const destinationsString = destinations
+            .map(loc => `- ${loc.street}, ${loc.plz}`)
+            .join('\n');
         
         const formattedDate = new Date(pickupDate).toLocaleDateString('de-DE', {
             weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -134,7 +151,7 @@ const CustomerBookingForm = () => {
         message += `*Telefon:* ${customerPhone}\n`;
         message += `*Anzahl Personen:* ${passengerCount}\n\n`;
         message += `*Abholung:*\n${pickupLocationsString}\n\n`;
-        message += `*Ziel:* ${destinationString}\n\n`;
+        message += `*Ziel(e):*\n${destinationsString}\n\n`;
 
         const timeLabel = isAirportPickup ? 'Landezeit' : 'Abholzeit';
         message += `*Abholdatum:* ${formattedDate}\n`;
@@ -210,37 +227,45 @@ const CustomerBookingForm = () => {
                         <button type="button" className="add-location-btn" onClick={addPickupLocation}>+ Weitere Adresse hinzufügen</button>
                     </div>
                      <div className="form-group">
-                        <label htmlFor="destination-street">Zielort</label>
+                        <label>Zielort(e)</label>
                          <div className="airport-buttons">
                             <button type="button" onClick={() => setDestinationAsAirport(COLOGNE_AIRPORT)}>✈️ Köln/Bonn</button>
                             <button type="button" onClick={() => setDestinationAsAirport(DUSSELDORF_AIRPORT)}>✈️ Düsseldorf</button>
                         </div>
-                         <div className="address-group">
-                            <div className="form-group">
-                               <label htmlFor="destination-street" className="sr-only">Straße &amp; Hausnummer</label>
-                                <input 
-                                    type="text" 
-                                    id="destination-street"
-                                    value={destination.street} 
-                                    onChange={e => handleDestinationChange('street', e.target.value)} 
-                                    required 
-                                    placeholder="Straße & Hausnummer"
-                                />
-                            </div>
-                            <div className="form-group plz-group">
-                                <label htmlFor="destination-plz" className="sr-only">PLZ</label>
-                                <input
-                                    type="text"
-                                    id="destination-plz"
-                                    value={destination.plz}
-                                    onChange={e => handleDestinationChange('plz', e.target.value)}
-                                    placeholder="PLZ"
-                                    required
-                                    pattern="\d{4,5}"
-                                    title="Bitte geben Sie eine gültige PLZ ein."
-                                />
-                            </div>
-                         </div>
+                        {destinations.map((destination, index) => (
+                           <div key={index} className="pickup-location-group">
+                                <div className="address-group">
+                                    <div className="form-group">
+                                        <label htmlFor={`destination-street-${index}`} className="sr-only">Straße &amp; Hausnummer</label>
+                                        <input 
+                                            type="text" 
+                                            id={`destination-street-${index}`}
+                                            value={destination.street}
+                                            onChange={e => handleDestinationChange(index, 'street', e.target.value)}
+                                            placeholder={index === 0 ? "Haupt-Zielort" : "Weiterer Zielort"}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="form-group plz-group">
+                                        <label htmlFor={`destination-plz-${index}`} className="sr-only">PLZ</label>
+                                        <input
+                                            type="text"
+                                            id={`destination-plz-${index}`}
+                                            value={destination.plz}
+                                            onChange={e => handleDestinationChange(index, 'plz', e.target.value)}
+                                            placeholder="PLZ"
+                                            required
+                                            pattern="\d{4,5}"
+                                            title="Bitte geben Sie eine gültige PLZ ein."
+                                        />
+                                    </div>
+                                </div>
+                                {destinations.length > 1 && (
+                                    <button type="button" className="remove-location-btn" onClick={() => removeDestination(index)} aria-label="Zielort entfernen">&times;</button>
+                                )}
+                           </div>
+                        ))}
+                        <button type="button" className="add-location-btn" onClick={addDestination}>+ Weiteren Zielort hinzufügen</button>
                     </div>
                     <div className="form-group">
                         <div className="checkbox-group">

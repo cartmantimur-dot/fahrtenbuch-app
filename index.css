@@ -1386,3 +1386,6 @@ header h1 {
       align-items: stretch;
     }
 }
+.modal-overlay.white-bg {
+  background-color: #ffffff;
+}

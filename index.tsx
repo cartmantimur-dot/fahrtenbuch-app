@@ -2,7 +2,7 @@ import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
 
-const GOOGLE_SHEET_URL: string = 'https://script.google.com/macros/s/AKfycbwnvIj19oSB-UY_dZ2_EbSsg_7G7O6LH-UFfhs7_bDB5Fsq35-jFpdxsG7oCqdoHzolvg/exec';
+const GOOGLE_SHEET_URL: string = 'https://script.google.com/macros/s/AKfycbwbJpfxa0q32gpWT-5WCx1z2MHtYrY2MjGg0v7mluLNmO0YO3EDT1xsRyNY1GLs7mdyhg/exec';
 
 // WICHTIG: Ersetzen Sie die folgende Nummer durch Ihre echte WhatsApp-Nummer im internationalen Format (z.B. 491761234567 für Deutschland).
 // Keine Nullen am Anfang, kein '+' oder sonstige Zeichen.
@@ -56,6 +56,16 @@ interface AssignedTrip {
 interface Address {
     street: string;
     plz: string;
+}
+
+// Car rental entries
+interface CarRental {
+  id: string;
+  username?: string;
+  licensePlate: string;
+  start: string; // ISO
+  end: string;   // ISO
+  amount: number;
 }
 
 // --- NEW CUSTOMER BOOKING FORM ---
@@ -159,8 +169,94 @@ const CustomerBookingForm = () => {
 
         if (isAirportPickup && flightNumber) {
             message += `*Flugnummer:* ${flightNumber}\n`;
+}
+
+// --- RENT CAR MODAL (only for Franco) ---
+const RentCarModal = ({ isOpen, onClose, onSave, plates }: { isOpen: boolean, onClose: () => void, onSave: (payload: { startISO: string, endISO: string, amount: number, licensePlate: string }) => Promise<void>, plates: string[] }) => {
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [amount, setAmount] = useState('');
+    const [selectedPlate, setSelectedPlate] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    if (!isOpen) return null;
+
+    const buildISO = (date: string) => {
+        try {
+            if (!date) return '';
+            const [yyyy, mm, dd] = date.split('-').map(Number);
+            const dt = new Date(yyyy, (mm - 1), dd, 0, 0);
+            return dt.toISOString();
+        } catch {
+            return '';
         }
-        
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        const startISO = buildISO(startDate);
+        const endISO = buildISO(endDate);
+        const price = parseFloat(amount);
+
+        if (!selectedPlate || !startISO || !endISO || isNaN(price)) {
+            setError('Bitte Zeitraum und Betrag vollständig und gültig angeben.');
+            return;
+        }
+        if (new Date(endISO).getTime() <= new Date(startISO).getTime()) {
+            setError('Ende muss nach dem Start liegen.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await onSave({ startISO, endISO, amount: price, licensePlate: selectedPlate });
+            onClose();
+            setStartDate(''); setEndDate(''); setAmount(''); setSelectedPlate('');
+        } catch (err: any) {
+            setError(err?.message || 'Speichern fehlgeschlagen.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay white-bg" onClick={onClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Auto verleihen</h2>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label>Kennzeichen</label>
+                        <select value={selectedPlate} onChange={e => setSelectedPlate(e.target.value)} required>
+                            <option value="" disabled>Bitte auswählen...</option>
+                            {plates.map(lp => (
+                                <option key={lp} value={lp}>{lp}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label>Start (Datum)</label>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
+                        <label>Ende (Datum)</label>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
+                        <label>Betrag (€)</label>
+                        <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required />
+                    </div>
+                    {error && <p className="error-text">{error}</p>}
+                    <div className="modal-actions">
+                        <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>Abbrechen</button>
+                        <button type="submit" className="btn-primary" disabled={isLoading}>{isLoading ? 'Speichere...' : 'Speichern'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
         const encodedMessage = encodeURIComponent(message);
         const whatsappUrl = `https://wa.me/${CHEF_WHATSAPP_NUMBER}?text=${encodedMessage}`;
         
@@ -583,6 +679,94 @@ const AddExpenseModal = ({ isOpen, onClose, onSave }: { isOpen: boolean, onClose
         </div>
     );
 };
+
+// --- RENT CAR MODAL (only for Franco, top-level) ---
+const RentCarModal = ({ isOpen, onClose, onSave, plates }: { isOpen: boolean, onClose: () => void, onSave: (payload: { startISO: string, endISO: string, amount: number, licensePlate: string }) => Promise<void>, plates: string[] }) => {
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [amount, setAmount] = useState('');
+    const [selectedPlate, setSelectedPlate] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    if (!isOpen) return null;
+
+    const buildISO = (date: string) => {
+        try {
+            if (!date) return '';
+            const [yyyy, mm, dd] = date.split('-').map(Number);
+            const dt = new Date(yyyy, (mm - 1), dd, 0, 0);
+            return dt.toISOString();
+        } catch {
+            return '';
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        const startISO = buildISO(startDate);
+        const endISO = buildISO(endDate);
+        const price = parseFloat(amount);
+
+        if (!selectedPlate || !startISO || !endISO || isNaN(price)) {
+            setError('Bitte Zeitraum und Betrag vollständig und gültig angeben.');
+            return;
+        }
+        if (new Date(endISO).getTime() <= new Date(startISO).getTime()) {
+            setError('Ende muss nach dem Start liegen.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await onSave({ startISO, endISO, amount: price, licensePlate: selectedPlate });
+            onClose();
+            setStartDate(''); setEndDate(''); setAmount(''); setSelectedPlate('');
+        } catch (err: any) {
+            setError(err?.message || 'Speichern fehlgeschlagen.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay white-bg" onClick={onClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h2>Auto verleihen</h2>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label>Kennzeichen</label>
+                        <select value={selectedPlate} onChange={e => setSelectedPlate(e.target.value)} required>
+                            <option value="" disabled>Bitte auswählen...</option>
+                            {plates.map(lp => (
+                                <option key={lp} value={lp}>{lp}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label>Start (Datum)</label>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
+                        <label>Ende (Datum)</label>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
+                        <label>Betrag (€)</label>
+                        <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required />
+                    </div>
+                    {error && <p className="error-text">{error}</p>}
+                    <div className="modal-actions">
+                        <button type="button" className="btn-secondary" onClick={onClose} disabled={isLoading}>Abbrechen</button>
+                        <button type="submit" className="btn-primary" disabled={isLoading}>{isLoading ? 'Speichere...' : 'Speichern'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+ 
 
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmButtonText = 'Bestätigen', isDestructive = false }: {
   isOpen: boolean;
@@ -1129,14 +1313,16 @@ Erwartetes JSON: {"start":"Blumenstr. 21","destination":"Westfalenhalle Dortmund
 
 
 // --- BOSS VIEW COMPONENT ---
-const BossView = ({ trips, drivers, initialAssignedTrips, onLogout, plates, onAddPlate, onDeletePlate }: { 
+const BossView = ({ trips, rentals = [], drivers, initialAssignedTrips, onLogout, plates, onAddPlate, onDeletePlate, onSwitchToUser }: { 
     trips: Trip[], 
+    rentals?: CarRental[],
     drivers: string[], 
     initialAssignedTrips: AssignedTrip[],
     onLogout: () => void,
     plates: string[],
     onAddPlate: (plate: string) => Promise<void>,
-    onDeletePlate: (plate: string) => Promise<void>
+    onDeletePlate: (plate: string) => Promise<void>,
+    onSwitchToUser?: () => void
 }) => {
     const [detailView, setDetailView] = useState<{
         monthKey: string;
@@ -1212,13 +1398,35 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout, plates, onAd
             byDriver: Record<string, { revenue: number, count: number }>, 
             trips: Trip[] 
         }>);
+
+        // Add rental revenues
+        rentals.forEach(r => {
+            const date = new Date(r.start);
+            if (isNaN(date.getTime())) return;
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            if (!groupedByMonth[monthKey]) {
+                groupedByMonth[monthKey] = {
+                    totalRevenue: 0,
+                    byPlate: {} as Record<string, { revenue: number, count: number }>,
+                    byDriver: {} as Record<string, { revenue: number, count: number }>,
+                    trips: [] as Trip[],
+                };
+            }
+            groupedByMonth[monthKey].totalRevenue += r.amount || 0;
+            const plate = r.licensePlate;
+            if (!groupedByMonth[monthKey].byPlate[plate]) {
+                groupedByMonth[monthKey].byPlate[plate] = { revenue: 0, count: 0 };
+            }
+            groupedByMonth[monthKey].byPlate[plate].revenue += r.amount || 0;
+            groupedByMonth[monthKey].byPlate[plate].count += 1; // zählt als eigener Umsatzposten
+        });
         
         Object.values(groupedByMonth).forEach(month => {
             month.trips.sort((a, b) => new Date(b.id.substring(0, 24)).getTime() - new Date(a.id.substring(0, 24)).getTime());
         });
 
         return groupedByMonth;
-    }, [trips]);
+    }, [trips, rentals]);
 
     const sortedMonthKeys = Object.keys(statsByMonth).sort().reverse();
     const sortedCockpitTrips = useMemo(() => 
@@ -1274,6 +1482,16 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout, plates, onAd
             return true; // 'all' case
         });
 
+        const filteredRentals = rentals.filter(r => {
+            const d = new Date(r.start);
+            if (isNaN(d.getTime())) return false;
+            const rMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (rMonthKey !== monthKey) return false;
+            if (filterType === 'plate') return r.licensePlate === filterValue;
+            if (filterType === 'driver') return (r.username || 'Unbekannt') === filterValue;
+            return true;
+        });
+
         return (
             <>
                 <header>
@@ -1285,26 +1503,56 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout, plates, onAd
                 </header>
                 <main className="boss-container">
                     <div className="list-container">
-                        {filteredTrips.length > 0 ? filteredTrips.map(trip => (
-                             <div key={trip.id} className="trip-card boss-trip-card">
-                                <div className="card-header">
-                                    <div className="card-path">
-                                        <span className="license-plate-badge">{trip.licensePlate}</span>
-                                        <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                        {filteredRentals.length > 0 && (
+                            <>
+                                <h3 style={{margin:'0 0 10px', color:'var(--primary-color)'}}>Verleihungen</h3>
+                                {filteredRentals.map(r => (
+                                    <div key={r.id} className="trip-card boss-trip-card">
+                                        <div className="card-header">
+                                            <div className="card-path">
+                                                <span className="license-plate-badge">{r.licensePlate}</span>
+                                                <strong>Vermietung</strong>
+                                            </div>
+                                            <span className="boss-trip-date">{formatDate(r.start)} – {formatDate(r.end)}</span>
+                                        </div>
+                                        <div className="card-details">
+                                            {r.username && <span className="detail-badge">Erfasst von: {r.username}</span>}
+                                        </div>
+                                        <div className="card-payment rental">
+                                            Umsatz: {Number(r.amount || 0).toFixed(2)} € (Verleih)
+                                        </div>
                                     </div>
-                                    <span className="boss-trip-date">{formatTripDateForDisplay(trip.id)}</span>
-                                </div>
-                                <div className="card-details">
-                                    <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
-                                </div>
-                                <div className={`card-payment ${trip.payment.type}`}>
-                                    Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
-                                </div>
-                            </div>
-                        )) : (
-                           <div className="empty-state">
-                                <h2>Keine Fahrten gefunden</h2>
-                                <p>Für diese Auswahl wurden keine Fahrten erfasst.</p>
+                                ))}
+                            </>
+                        )}
+
+                        {filteredTrips.length > 0 && (
+                            <>
+                                <h3 style={{margin:'20px 0 10px', color:'var(--primary-color)'}}>Fahrten</h3>
+                                {filteredTrips.map(trip => (
+                                    <div key={trip.id} className="trip-card boss-trip-card">
+                                        <div className="card-header">
+                                            <div className="card-path">
+                                                <span className="license-plate-badge">{trip.licensePlate}</span>
+                                                <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
+                                            </div>
+                                            <span className="boss-trip-date">{formatTripDateForDisplay(trip.id)}</span>
+                                        </div>
+                                        <div className="card-details">
+                                            <span className="detail-badge">Fahrer: {trip.username || 'N/A'}</span>
+                                        </div>
+                                        <div className={`card-payment ${trip.payment.type}`}>
+                                            Umsatz: {trip.payment.amount.toFixed(2)} € ({trip.payment.type === 'cash' ? 'Bar' : 'Rechnung'})
+                                        </div>
+                                    </div>
+                                ))}
+                            </>
+                        )}
+
+                        {filteredTrips.length === 0 && filteredRentals.length === 0 && (
+                            <div className="empty-state">
+                                <h2>Keine Fahrten oder Verleihungen gefunden</h2>
+                                <p>Für diese Auswahl wurden keine Umsätze erfasst.</p>
                             </div>
                         )}
                     </div>
@@ -1329,6 +1577,9 @@ const BossView = ({ trips, drivers, initialAssignedTrips, onLogout, plates, onAd
                     <div className="header-actions">
                          <button className="header-btn" onClick={() => setIsManagePlatesModalOpen(true)}>Kennzeichen</button>
                          <button className="header-btn" onClick={() => setIsAssignModalOpen(true)}>Fahrt zuweisen</button>
+                        {onSwitchToUser && (
+                            <button className="header-btn" onClick={onSwitchToUser}>Fahreransicht</button>
+                        )}
                         <button className="logout-btn" onClick={onLogout}>Logout</button>
                     </div>
                 </div>
@@ -1453,20 +1704,25 @@ const Toast = ({ message, onClear }: { message: string, onClear: () => void }) =
 };
 
 // Main App component for Drivers
-const App = ({ username, initialData, onLogout, plates }: { 
+const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitchRoles, onRentalAdded }: { 
     username: string, 
-    initialData: { trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[] },
+    initialData: { trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[], rentals?: CarRental[] },
     onLogout: () => void,
-    plates: string[]
+    plates: string[],
+    onSwitchToBoss?: () => void,
+    canSwitchRoles?: boolean,
+    onRentalAdded: (rental: CarRental) => void
 }) => {
   const [trips, setTrips] = useState<Trip[]>(initialData.trips);
   const [expenses, setExpenses] = useState<Expense[]>(initialData.expenses);
   const [assignedTrips, setAssignedTrips] = useState<AssignedTrip[]>(initialData.assignedTrips);
+  const [rentals, setRentals] = useState<CarRental[]>(initialData.rentals || []);
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToStart, setTripToStart] = useState<AssignedTrip | null>(null);
   const [tripToEdit, setTripToEdit] = useState<Trip | null>(null);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [isRentModalOpen, setIsRentModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<'trips' | 'expenses' | 'stats'>('trips');
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -1480,6 +1736,35 @@ const App = ({ username, initialData, onLogout, plates }: {
     confirmButtonText: 'OK',
     isDestructive: false,
   });
+
+  const handleSaveRental = async ({ startISO, endISO, amount, licensePlate }: { startISO: string, endISO: string, amount: number, licensePlate: string }) => {
+    if (!GOOGLE_SHEET_URL) throw new Error('App ist nicht konfiguriert.');
+    try {
+      const response = await fetch(GOOGLE_SHEET_URL, {
+        method: 'POST',
+        body: JSON.stringify({ dataType: 'car_rental', username, start: startISO, end: endISO, amount, licensePlate }),
+      });
+      if (!response.ok) throw new Error('Kommunikationsfehler mit dem Server.');
+      const result = await response.json();
+      if (result.status === 'error') throw new Error(result.message || 'Fehler beim Speichern des Verleihs.');
+      // Update UI immediately
+      const newRental: CarRental = {
+        id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
+        username,
+        licensePlate,
+        start: startISO,
+        end: endISO,
+        amount,
+      };
+      setRentals(prev => [newRental, ...prev]);
+      // Ensure global app data also reflects the new rental (persists across role switches)
+      onRentalAdded(newRental);
+      setToastMessage('✅ Verleih gespeichert!');
+    } catch (error: any) {
+      setToastMessage(`❌ Fehler: ${error.message || 'Speichern fehlgeschlagen.'}`);
+      throw error;
+    }
+  };
 
   const syncTrip = async (trip: Trip) => {
     if (!GOOGLE_SHEET_URL) return;
@@ -1700,6 +1985,16 @@ const App = ({ username, initialData, onLogout, plates }: {
 
   const openTrips = useMemo(() => trips.filter(trip => !trip.isSettled).sort((a, b) => new Date(b.id.substring(0, 24)).getTime() - new Date(a.id.substring(0, 24)).getTime()), [trips]);
   const openExpensesList = useMemo(() => expenses.filter(expense => !expense.isReimbursed), [expenses]);
+  const nowTs = Date.now();
+  const activeRentals = useMemo(() => rentals.filter(r => {
+    const startTs = new Date(r.start).getTime();
+    const endTs = new Date(r.end).getTime();
+    return !isNaN(startTs) && !isNaN(endTs) && startTs <= nowTs && endTs >= nowTs;
+  }), [rentals, nowTs]);
+  const upcomingRentals = useMemo(() => rentals.filter(r => {
+    const startTs = new Date(r.start).getTime();
+    return !isNaN(startTs) && startTs > nowTs; // alle zukünftigen Verleihungen
+  }), [rentals, nowTs]);
   
   const filteredOpenTrips = useMemo(() => {
     return openTrips.filter(trip => {
@@ -1903,12 +2198,42 @@ const App = ({ username, initialData, onLogout, plates }: {
             <div className="header-content">
                 <h1>Fahrtenbuch</h1>
                 <div className="header-actions">
+                    {canSwitchRoles && onSwitchToBoss && (
+                        <button className="header-btn" onClick={onSwitchToBoss}>Chefansicht</button>
+                    )}
+                    {username.toLowerCase() === 'franco' && (
+                        <button className="header-btn" onClick={() => setIsRentModalOpen(true)}>Auto verleihen</button>
+                    )}
                     <button className="header-btn" onClick={() => setIsArchiveOpen(true)}>Archiv</button>
                     <button className="header-btn" onClick={() => setIsSupportModalOpen(true)}>Support</button>
                     <button className="logout-btn" onClick={onLogout}>Logout</button>
                 </div>
             </div>
         </header>
+        {(activeRentals.length > 0 || upcomingRentals.length > 0) && (
+          <div className="assigned-trips-section" style={{paddingTop: '0.5rem'}}>
+            {activeRentals.length > 0 && (
+              <div className="card-details" style={{marginBottom: '0.5rem'}}>
+                <span className="detail-badge" style={{background:'#e0ffe0'}}>Aktiv verliehen:</span>
+                {activeRentals.map(r => (
+                  <span key={r.id} className="license-plate-badge" style={{marginLeft:'0.5rem'}}>
+                    {r.licensePlate} bis {new Date(r.end).toLocaleDateString('de-DE')}
+                  </span>
+                ))}
+              </div>
+            )}
+            {upcomingRentals.length > 0 && (
+              <div className="card-details">
+                <span className="detail-badge" style={{background:'#fff3cd'}}>Bevorstehend:</span>
+                {upcomingRentals.map(r => (
+                  <span key={r.id} className="license-plate-badge" style={{marginLeft:'0.5rem'}}>
+                    {r.licensePlate} ab {new Date(r.start).toLocaleDateString('de-DE')}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <main className="app-container">{renderContent()}</main>
         <nav className="bottom-nav">
             <button className={`nav-btn ${activeView === 'trips' ? 'active' : ''}`} onClick={() => setActiveView('trips')}>Fahrten</button>
@@ -1924,6 +2249,7 @@ const App = ({ username, initialData, onLogout, plates }: {
             plates={plates}
         />
         <AddExpenseModal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} onSave={handleAddExpense} />
+        <RentCarModal isOpen={isRentModalOpen} onClose={() => setIsRentModalOpen(false)} onSave={handleSaveRental} plates={plates} />
         <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} {...confirmModalProps} />
         <SupportModal isOpen={isSupportModalOpen} onClose={() => setIsSupportModalOpen(false)} onSubmit={handleSendSupportTicket} openTrips={openTrips} />
         {isArchiveOpen && <ArchiveView trips={trips} expenses={expenses} onClose={() => setIsArchiveOpen(false)} />}
@@ -2064,7 +2390,8 @@ const RegistrationScreen = ({ onRegister, onSwitchToLogin }: { onRegister: (user
 
 const AppContainer = () => {
     const [currentUser, setCurrentUser] = useState<string | null>(null);
-    const [appData, setAppData] = useState<{ trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[], drivers: string[], plates: string[] }>({ trips: [], expenses: [], assignedTrips: [], drivers: [], plates: [] });
+    const [primaryUser, setPrimaryUser] = useState<string | null>(null);
+    const [appData, setAppData] = useState<{ trips: Trip[], expenses: Expense[], assignedTrips: AssignedTrip[], drivers: string[], plates: string[], rentals?: CarRental[] }>({ trips: [], expenses: [], assignedTrips: [], drivers: [], plates: [], rentals: [] });
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [authView, setAuthView] = useState<'login' | 'register'>('login');
     const [isBookingMode, setIsBookingMode] = useState(false);
@@ -2079,8 +2406,13 @@ const AppContainer = () => {
         }
 
         const loggedInUser = localStorage.getItem('fahrtenbuch-currentUser');
+        const savedPrimaryUser = localStorage.getItem('fahrtenbuch-primaryUser');
+        if (savedPrimaryUser) {
+            setPrimaryUser(savedPrimaryUser);
+        }
         if (loggedInUser) {
             setCurrentUser(loggedInUser);
+            if (!savedPrimaryUser) setPrimaryUser(loggedInUser);
         } else {
             setIsDataLoading(false);
         }
@@ -2104,13 +2436,42 @@ const AppContainer = () => {
                 const result = await response.json();
                 if (result.status === 'error') throw new Error(result.message);
                 
-                setAppData({
+                const baseData = {
                     trips: (result.trips || []).filter((t: any) => t && t.id).map((t: any) => ({ ...t, isSettled: t.isSettled || false, wurdeBearbeitet: t.wurdeBearbeitet === true })),
                     expenses: (result.expenses || []).filter((e: any) => e && e.id).map((e: any) => ({ ...e, isReimbursed: e.isReimbursed || false })),
                     assignedTrips: (result.assignedTrips || []).filter((t: any) => t && t.id),
                     drivers: result.drivers || [],
                     plates: result.plates || [],
-                });
+                    rentals: Array.isArray(result.rentals) ? result.rentals.filter((r: any) => r && r.licensePlate && r.start && r.end).map((r: any) => ({
+                        id: r.id || new Date().toISOString() + Math.random().toString(36).substr(2,9),
+                        username: r.username,
+                        licensePlate: r.licensePlate,
+                        start: r.start,
+                        end: r.end,
+                        amount: Number(r.amount) || 0,
+                    })) : [],
+                };
+
+                // Try to fetch rentals; if endpoint not available, keep empty array gracefully
+                let rentals: CarRental[] = [];
+                try {
+                    const rResp = await fetch(`${GOOGLE_SHEET_URL}?action=getCarRentals`);
+                    if (rResp.ok) {
+                        const rJson = await rResp.json();
+                        if (rJson.status !== 'error' && Array.isArray(rJson.rentals)) {
+                            rentals = rJson.rentals.filter((r: any) => r && r.licensePlate && r.start && r.end).map((r: any) => ({
+                                id: r.id || new Date().toISOString() + Math.random().toString(36).substr(2,9),
+                                username: r.username,
+                                licensePlate: r.licensePlate,
+                                start: r.start,
+                                end: r.end,
+                                amount: Number(r.amount) || 0,
+                            }));
+                        }
+                    }
+                } catch { /* optional endpoint; ignore errors */ }
+
+                setAppData({ ...baseData, rentals });
 
             } catch (error: any) {
                 console.error("Error loading data from Google Sheet:", error);
@@ -2196,6 +2557,8 @@ const AppContainer = () => {
         }
 
         localStorage.setItem('fahrtenbuch-currentUser', username);
+        localStorage.setItem('fahrtenbuch-primaryUser', username);
+        setPrimaryUser(username);
         setCurrentUser(username);
     };
 
@@ -2219,9 +2582,23 @@ const AppContainer = () => {
 
     const handleLogout = () => {
         localStorage.removeItem('fahrtenbuch-currentUser');
+        localStorage.removeItem('fahrtenbuch-primaryUser');
+        setPrimaryUser(null);
         setCurrentUser(null);
-        setAppData({ trips: [], expenses: [], assignedTrips: [], drivers: [], plates: [] });
+        setAppData({ trips: [], expenses: [], assignedTrips: [], drivers: [], plates: [], rentals: [] });
         setAuthView('login');
+    };
+
+    const canSwitchRoles = primaryUser?.toLowerCase() === 'franco';
+    const switchToBossView = () => {
+        if (!canSwitchRoles) return;
+        localStorage.setItem('fahrtenbuch-currentUser', 'chef');
+        setCurrentUser('chef');
+    };
+    const switchToUserView = () => {
+        if (!primaryUser) return;
+        localStorage.setItem('fahrtenbuch-currentUser', primaryUser);
+        setCurrentUser(primaryUser);
     };
 
     if (isDataLoading) {
@@ -2246,12 +2623,14 @@ const AppContainer = () => {
     if (currentUser.toLowerCase() === 'chef') {
         return <BossView 
             trips={appData.trips} 
+            rentals={appData.rentals || []}
             drivers={appData.drivers} 
             initialAssignedTrips={appData.assignedTrips} 
             onLogout={handleLogout} 
             plates={appData.plates}
             onAddPlate={handleAddPlate}
             onDeletePlate={handleDeletePlate}
+            onSwitchToUser={switchToUserView}
         />;
     }
 
@@ -2260,6 +2639,9 @@ const AppContainer = () => {
         initialData={appData} 
         onLogout={handleLogout}
         plates={appData.plates}
+        onSwitchToBoss={switchToBossView}
+        canSwitchRoles={canSwitchRoles}
+        onRentalAdded={(r) => setAppData(prev => ({ ...prev, rentals: [r, ...(prev.rentals || [])] }))}
     />;
 };
 

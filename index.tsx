@@ -1576,9 +1576,8 @@ const BossView = ({ trips, rentals = [], drivers, initialAssignedTrips, onLogout
                     <h1>Chef-Dashboard</h1>
                     <div className="header-actions">
                          <button className="header-btn" onClick={() => setIsManagePlatesModalOpen(true)}>Kennzeichen</button>
-                         <button className="header-btn" onClick={() => setIsAssignModalOpen(true)}>Fahrt zuweisen</button>
                         {onSwitchToUser && (
-                            <button className="header-btn" onClick={onSwitchToUser}>Fahreransicht</button>
+                            <button className="header-btn fc-koeln" onClick={onSwitchToUser}>Fahreransicht</button>
                         )}
                         <button className="logout-btn" onClick={onLogout}>Logout</button>
                     </div>
@@ -2199,7 +2198,7 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
                 <h1>Fahrtenbuch</h1>
                 <div className="header-actions">
                     {canSwitchRoles && onSwitchToBoss && (
-                        <button className="header-btn" onClick={onSwitchToBoss}>Chefansicht</button>
+                        <button className="header-btn fc-koeln" onClick={onSwitchToBoss}>Chefansicht</button>
                     )}
                     {username.toLowerCase() === 'franco' && (
                         <button className="header-btn" onClick={() => setIsRentModalOpen(true)}>Auto verleihen</button>

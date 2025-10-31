@@ -102,6 +102,14 @@ header h1 {
     background-color: var(--accent-hover-color);
 }
 
+/* FC Köln Rot für spezielle Switch-Buttons */
+.header-btn.fc-koeln {
+    background-color: #E30613; /* 1. FC Köln Rot */
+}
+.header-btn.fc-koeln:hover {
+    background-color: #b30510; /* dunkleres Rot für Hover */
+}
+
 .logout-btn:hover {
     background-color: var(--danger-color);
 }
@@ -1372,6 +1380,37 @@ header h1 {
 
 
 @media (max-width: 600px) {
+    header .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .header-actions {
+        flex-wrap: wrap;
+        gap: 6px;
+        width: 100%;
+    }
+    .header-btn, .logout-btn {
+        padding: 6px 8px;
+        font-size: 0.85rem;
+    }
+    header h1 {
+        font-size: 1.2rem;
+    }
+    .trip-card, .expense-card, .assigned-trip-card {
+        padding: 14px;
+        gap: 8px;
+    }
+    .card-header {
+        font-size: 1rem;
+    }
+    .license-plate-badge {
+        font-size: 0.75rem;
+        padding: 2px 6px;
+    }
+    .detail-badge {
+        font-size: 0.75rem;
+    }
     .stats-grid {
         grid-template-columns: 1fr;
     }
@@ -1384,6 +1423,9 @@ header h1 {
     .filter-container {
       flex-direction: column;
       align-items: stretch;
+    }
+    .list-container {
+      gap: 10px;
     }
 }
 .modal-overlay.white-bg {

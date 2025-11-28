@@ -1943,10 +1943,13 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
       }
     };
 
-  // Persist local data for resilience
+  // Persist only pending items locally to avoid resurrecting deleted server data
   useEffect(() => {
-    persistLocalData(username, { trips, expenses, assignedTrips, rentals });
-  }, [username, trips, expenses, assignedTrips, rentals]);
+    const pendingTrips = trips.filter(t => isPending('trip', String(t.id)));
+    const pendingExpenses = expenses.filter(e => isPending('expense', String(e.id)));
+    const pendingRentals = rentals.filter(r => isPending('car_rental', String(r.id)));
+    persistLocalData(username, { trips: pendingTrips, expenses: pendingExpenses, rentals: pendingRentals, assignedTrips: [] });
+  }, [username, trips, expenses, rentals]);
 
   const { openCashCollected, openInvoiceIssued, openExpenses, openMyEarnings, amountToBoss } = useMemo(() => {
     const unsettledTrips = trips.filter(trip => !trip.isSettled);
@@ -2572,17 +2575,22 @@ const AppContainer = () => {
                     }
                 } catch { /* optional endpoint; ignore errors */ }
 
-                // Merge with locally persisted offline data (prevent loss)
+                // Merge with locally persisted offline data (only keep pending overlays)
                 const local = readLocalData(currentUser);
-                const mergeById = <T extends { id: string }>(remote: T[] = [], localArr: T[] = []) => {
-                  const set = new Map(remote.map(i => [i.id, i]));
-                  for (const l of localArr) { if (!set.has(l.id)) set.set(l.id, l); }
-                  return Array.from(set.values());
+                const overlayPending = <T extends { id: string }>(remote: T[] = [], localArr: T[] = [], type: SyncStatusType) => {
+                  const remoteById = new Map(remote.map(i => [i.id, i]));
+                  const pendingLocals = (localArr || []).filter((item: any) => item && item.id && isPending(type, String(item.id)));
+                  const merged: T[] = [...remote];
+                  for (const l of pendingLocals as T[]) {
+                    if (!remoteById.has(l.id)) merged.push(l);
+                  }
+                  return merged;
                 };
-                const mergedTrips = mergeById(baseData.trips || [], (local.trips || []).filter(Boolean) as Trip[]);
-                const mergedExpenses = mergeById(baseData.expenses || [], (local.expenses || []).filter(Boolean) as Expense[]);
-                const mergedAssigned = mergeById(baseData.assignedTrips || [], (local.assignedTrips || []).filter(Boolean) as AssignedTrip[]);
-                const mergedRentals = mergeById(rentals || [], (local.rentals || []).filter(Boolean) as CarRental[]);
+                const mergedTrips = overlayPending(baseData.trips || [], (local.trips || []) as Trip[], 'trip');
+                const mergedExpenses = overlayPending(baseData.expenses || [], (local.expenses || []) as Expense[], 'expense');
+                // Assigned trips are authoritative from server; do not overlay locals to avoid ghosts
+                const mergedAssigned = baseData.assignedTrips || [];
+                const mergedRentals = overlayPending(rentals || [], (local.rentals || []) as CarRental[], 'car_rental');
                 const mergedPlates = Array.from(new Set([...(baseData.plates || []), ...((local.plates || []) as string[])]));
 
                 setAppData({ ...baseData, rentals: mergedRentals, trips: mergedTrips, expenses: mergedExpenses, assignedTrips: mergedAssigned, plates: mergedPlates });

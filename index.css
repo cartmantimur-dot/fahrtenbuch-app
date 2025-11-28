@@ -1431,3 +1431,16 @@ header h1 {
 .modal-overlay.white-bg {
   background-color: #ffffff;
 }
+
+/* Sync status dot next to license plate */
+.sync-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 6px;
+  border: 1px solid rgba(0,0,0,0.15);
+  vertical-align: middle;
+}
+.sync-dot.pending { background-color: #ff9800; }
+.sync-dot.synced { background-color: #28a745; }

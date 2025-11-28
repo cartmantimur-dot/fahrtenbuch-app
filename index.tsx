@@ -32,6 +32,8 @@ interface Trip {
   originalFahreranzahl?: number;
   originalIchHabeKassiert?: boolean;
   originalNotizen?: string;
+  // UI-only: Synchronisationsstatus (lokal)
+  syncStatus?: 'pending' | 'synced';
 }
 
 interface Expense {
@@ -1739,13 +1741,6 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
   const handleSaveRental = async ({ startISO, endISO, amount, licensePlate }: { startISO: string, endISO: string, amount: number, licensePlate: string }) => {
     if (!GOOGLE_SHEET_URL) throw new Error('App ist nicht konfiguriert.');
     try {
-      const response = await fetch(GOOGLE_SHEET_URL, {
-        method: 'POST',
-        body: JSON.stringify({ dataType: 'car_rental', username, start: startISO, end: endISO, amount, licensePlate }),
-      });
-      if (!response.ok) throw new Error('Kommunikationsfehler mit dem Server.');
-      const result = await response.json();
-      if (result.status === 'error') throw new Error(result.message || 'Fehler beim Speichern des Verleihs.');
       // Update UI immediately
       const newRental: CarRental = {
         id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
@@ -1758,7 +1753,9 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
       setRentals(prev => [newRental, ...prev]);
       // Ensure global app data also reflects the new rental (persists across role switches)
       onRentalAdded(newRental);
-      setToastMessage('✅ Verleih gespeichert!');
+      // Queue sync
+      const ok = await enqueueOp({ id: newRental.id, type: 'car_rental', username, payload: { start: startISO, end: endISO, amount, licensePlate } });
+      setToastMessage(ok ? '✅ Verleih gespeichert!' : '📥 Offline gespeichert – wird synchronisiert.');
     } catch (error: any) {
       setToastMessage(`❌ Fehler: ${error.message || 'Speichern fehlgeschlagen.'}`);
       throw error;
@@ -1766,26 +1763,21 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
   };
 
   const syncTrip = async (trip: Trip) => {
-    if (!GOOGLE_SHEET_URL) return;
     try {
-      await fetch(GOOGLE_SHEET_URL, {
-        method: 'POST',
-        body: JSON.stringify({ dataType: 'trip', ...trip, username }),
-      });
+      markPending('trip', trip.id);
+      const ok = await enqueueOp({ id: trip.id, type: 'trip', username, payload: { ...trip } });
+      if (!ok) setToastMessage('📥 Fahrt offline gespeichert – wird synchronisiert.');
     } catch (error) {
-      console.error("Failed to sync trip:", error);
+      console.error("Failed to queue trip:", error);
     }
   };
 
   const syncExpense = async (expense: Expense) => {
-    if (!GOOGLE_SHEET_URL) return;
     try {
-      await fetch(GOOGLE_SHEET_URL, {
-        method: 'POST',
-        body: JSON.stringify({ dataType: 'expense', ...expense, username }),
-      });
+      const ok = await enqueueOp({ id: expense.id, type: 'expense', username, payload: { ...expense } });
+      if (!ok) setToastMessage('📥 Ausgabe offline gespeichert – wird synchronisiert.');
     } catch (error) {
-      console.error("Failed to sync expense:", error);
+      console.error("Failed to queue expense:", error);
     }
   };
 
@@ -1793,13 +1785,10 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
     setAssignedTrips(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     setToastMessage(status === 'accepted' ? '✅ Fahrt akzeptiert!' : 'Fahrt abgelehnt.');
     try {
-        await fetch(GOOGLE_SHEET_URL, {
-            method: 'POST',
-            body: JSON.stringify({ dataType: 'update_assigned_trip_status', id, status, username }),
-        });
+      const ok = await enqueueOp({ id, type: 'update_assigned_trip_status', username, payload: { id, status } });
+      if (!ok) setToastMessage('📥 Status offline gespeichert – wird synchronisiert.');
     } catch (error) {
-        console.error("Failed to update trip status:", error);
-        setToastMessage('❌ Status konnte nicht übermittelt werden.');
+      console.error("Failed to queue trip status:", error);
     }
   };
 
@@ -1836,6 +1825,7 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
             originalFahreranzahl: tripToEdit.numberOfDrivers,
             originalIchHabeKassiert: tripToEdit.iCollectedPayment,
             originalNotizen: tripToEdit.notes || "",
+            syncStatus: 'pending',
         };
         setTrips(prevTrips => prevTrips.map(t => t.id === updatedTrip.id ? updatedTrip : t));
         await syncTrip(updatedTrip);
@@ -1844,7 +1834,8 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
         // Add logic
         const newTrip: Trip = {
           id: new Date().toISOString() + Math.random().toString(36).substr(2, 9),
-          ...newTripData, isSettled: false, wurdeBearbeitet: false
+          ...newTripData, isSettled: false, wurdeBearbeitet: false,
+          syncStatus: 'pending',
         };
         setTrips(prevTrips => [newTrip, ...prevTrips]);
         await syncTrip(newTrip);
@@ -1869,7 +1860,7 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
     let settledTrip: Trip | undefined;
     const updatedTrips = trips.map(trip => {
         if (trip.id === id) {
-            settledTrip = { ...trip, isSettled: true };
+            settledTrip = { ...trip, isSettled: true, syncStatus: 'pending' };
             return settledTrip;
         }
         return trip;
@@ -1943,32 +1934,19 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
   
     const handleSendSupportTicket = async (message: string, attachedTripId: string | null) => {
       try {
-          const response = await fetch(GOOGLE_SHEET_URL, {
-              method: 'POST',
-              body: JSON.stringify({
-                  dataType: 'support_ticket',
-                  username,
-                  message,
-                  attachedTripId: attachedTripId || '',
-              }),
-          });
-          
-          if (!response.ok) {
-              throw new Error('Kommunikationsfehler mit dem Server.');
-          }
-
-          const result = await response.json();
-          if (result.status === 'error') {
-              throw new Error(result.message);
-          }
-          
-          setToastMessage('✅ Support-Ticket erfolgreich gesendet!');
-          setIsSupportModalOpen(false);
+        const ok = await enqueueOp({ id: new Date().toISOString() + Math.random().toString(36).substr(2,9), type: 'support_ticket', username, payload: { message, attachedTripId: attachedTripId || '' } });
+        setToastMessage(ok ? '✅ Support-Ticket erfolgreich gesendet!' : '📥 Ticket offline gespeichert – wird synchronisiert.');
+        setIsSupportModalOpen(false);
       } catch (error: any) {
-          console.error("Failed to send support ticket:", error);
-          setToastMessage(`❌ Fehler: ${error.message || 'Ticket konnte nicht gesendet werden.'}`);
+        console.error("Failed to queue support ticket:", error);
+        setToastMessage(`❌ Fehler: ${error.message || 'Ticket konnte nicht gesendet werden.'}`);
       }
-  };
+    };
+
+  // Persist local data for resilience
+  useEffect(() => {
+    persistLocalData(username, { trips, expenses, assignedTrips, rentals });
+  }, [username, trips, expenses, assignedTrips, rentals]);
 
   const { openCashCollected, openInvoiceIssued, openExpenses, openMyEarnings, amountToBoss } = useMemo(() => {
     const unsettledTrips = trips.filter(trip => !trip.isSettled);
@@ -2006,6 +1984,14 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
       return destinationMatch && plateMatch;
     });
   }, [openTrips, filterDestination, filterLicensePlate]);
+
+  // Re-render when sync status changes globally
+  const [syncStatusVersion, setSyncStatusVersion] = useState(0);
+  useEffect(() => {
+    const handler = () => setSyncStatusVersion(v => v + 1);
+    window.addEventListener('fahrtenbuch-sync-status-changed', handler);
+    return () => window.removeEventListener('fahrtenbuch-sync-status-changed', handler);
+  }, []);
 
   const formatAssignedTripTime = (isoString: string) => {
     if (!isoString) return "Zeit n.a.";
@@ -2099,6 +2085,7 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
                                 const dateHeader = getRelativeDateHeader(trip.id);
                                 const showDateHeader = dateHeader !== lastDateHeader;
                                 lastDateHeader = dateHeader;
+                                const pending = isPending('trip', trip.id);
                                 return (
                                     <React.Fragment key={trip.id}>
                                         {showDateHeader && <h3 className="date-header">{dateHeader}</h3>}
@@ -2106,6 +2093,7 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
                                             <div className="card-header">
                                                 <div className="card-path">
                                                     <span className="license-plate-badge">{trip.licensePlate}</span>
+                                                    <span className={`sync-dot ${pending ? 'pending' : 'synced'}`} aria-label={pending ? 'Nicht synchronisiert' : 'Synchronisiert'}></span>
                                                     <strong>{trip.start}</strong> → <strong>{trip.destination}</strong>
                                                 </div>
                                                 <span className="trip-date">{formatTripDateForDisplay(trip.id)}</span>
@@ -2387,6 +2375,120 @@ const RegistrationScreen = ({ onRegister, onSwitchToLogin }: { onRegister: (user
     );
 };
 
+// --- Offline Sync Helpers ---
+type SyncOpType = 'trip' | 'expense' | 'car_rental' | 'update_assigned_trip_status' | 'support_ticket' | 'add_plate' | 'delete_plate';
+interface SyncOp { id: string; type: SyncOpType; payload: any; username: string; }
+const SYNC_QUEUE_KEY = 'fahrtenbuch-sync-queue';
+const SYNC_STATUS_KEY = 'fahrtenbuch-sync-status';
+
+const readQueue = (): SyncOp[] => {
+  try {
+    const raw = localStorage.getItem(SYNC_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+};
+
+const writeQueue = (queue: SyncOp[]) => {
+  try { localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue)); } catch {}
+};
+
+type SyncStatusType = 'trip' | 'expense' | 'car_rental';
+const readSyncStatus = (): Record<SyncStatusType, Record<string, 'pending' | 'synced'>> => {
+  try {
+    const raw = localStorage.getItem(SYNC_STATUS_KEY);
+    return raw ? JSON.parse(raw) : { trip: {}, expense: {}, car_rental: {} };
+  } catch { return { trip: {}, expense: {}, car_rental: {} }; }
+};
+
+const writeSyncStatus = (status: Record<SyncStatusType, Record<string, 'pending' | 'synced'>>) => {
+  try {
+    localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(status));
+    window.dispatchEvent(new Event('fahrtenbuch-sync-status-changed'));
+  } catch {}
+};
+
+const markPending = (type: SyncStatusType, id: string) => {
+  const status = readSyncStatus();
+  status[type][id] = 'pending';
+  writeSyncStatus(status);
+};
+
+const markSynced = (type: SyncStatusType, id: string) => {
+  const status = readSyncStatus();
+  status[type][id] = 'synced';
+  writeSyncStatus(status);
+};
+
+const isPending = (type: SyncStatusType, id: string) => {
+  const status = readSyncStatus();
+  return status[type][id] === 'pending';
+};
+
+const enqueueOp = async (op: SyncOp): Promise<boolean> => {
+  const queue = readQueue();
+  queue.push(op);
+  writeQueue(queue);
+  // Try to send immediately
+  return await drainQueueOne(op.id);
+};
+
+const drainQueueOne = async (opId: string): Promise<boolean> => {
+  let queue = readQueue();
+  const idx = queue.findIndex(q => q.id === opId);
+  if (idx === -1) return true;
+  const op = queue[idx];
+  try {
+    const resp = await fetch(GOOGLE_SHEET_URL, {
+      method: 'POST',
+      body: JSON.stringify({ dataType: op.type, username: op.username, ...op.payload }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const json = await resp.json();
+    if (json.status === 'error') throw new Error(json.message || 'Serverfehler');
+    // Remove from queue on success
+    queue.splice(idx, 1);
+    writeQueue(queue);
+    // Mark sync status when applicable
+    if (op.type === 'trip' && op.payload && op.payload.id) {
+      markSynced('trip', String(op.payload.id));
+    }
+    return true;
+  } catch {
+    // Keep in queue for later retry
+    return false;
+  }
+};
+
+const drainQueue = async () => {
+  let queue = readQueue();
+  if (!queue.length) return;
+  const remaining: SyncOp[] = [];
+  for (const op of queue) {
+    try {
+      const ok = await drainQueueOne(op.id);
+      if (!ok) remaining.push(op);
+    } catch { remaining.push(op); }
+  }
+  writeQueue(remaining);
+};
+
+const persistLocalData = (username: string, data: { trips?: Trip[]; expenses?: Expense[]; assignedTrips?: AssignedTrip[]; rentals?: CarRental[]; plates?: string[] }) => {
+  try {
+    const key = `fahrtenbuch-local-${username}`;
+    const raw = localStorage.getItem(key);
+    const prev = raw ? JSON.parse(raw) : {};
+    const merged = { ...prev, ...data };
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch {}
+};
+
+const readLocalData = (username: string): { trips?: Trip[]; expenses?: Expense[]; assignedTrips?: AssignedTrip[]; rentals?: CarRental[]; plates?: string[] } => {
+  try {
+    const raw = localStorage.getItem(`fahrtenbuch-local-${username}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+};
+
 const AppContainer = () => {
     const [currentUser, setCurrentUser] = useState<string | null>(null);
     const [primaryUser, setPrimaryUser] = useState<string | null>(null);
@@ -2470,7 +2572,22 @@ const AppContainer = () => {
                     }
                 } catch { /* optional endpoint; ignore errors */ }
 
-                setAppData({ ...baseData, rentals });
+                // Merge with locally persisted offline data (prevent loss)
+                const local = readLocalData(currentUser);
+                const mergeById = <T extends { id: string }>(remote: T[] = [], localArr: T[] = []) => {
+                  const set = new Map(remote.map(i => [i.id, i]));
+                  for (const l of localArr) { if (!set.has(l.id)) set.set(l.id, l); }
+                  return Array.from(set.values());
+                };
+                const mergedTrips = mergeById(baseData.trips || [], (local.trips || []).filter(Boolean) as Trip[]);
+                const mergedExpenses = mergeById(baseData.expenses || [], (local.expenses || []).filter(Boolean) as Expense[]);
+                const mergedAssigned = mergeById(baseData.assignedTrips || [], (local.assignedTrips || []).filter(Boolean) as AssignedTrip[]);
+                const mergedRentals = mergeById(rentals || [], (local.rentals || []).filter(Boolean) as CarRental[]);
+                const mergedPlates = Array.from(new Set([...(baseData.plates || []), ...((local.plates || []) as string[])]));
+
+                setAppData({ ...baseData, rentals: mergedRentals, trips: mergedTrips, expenses: mergedExpenses, assignedTrips: mergedAssigned, plates: mergedPlates });
+                // Kick off background sync of any queued operations
+                drainQueue();
 
             } catch (error: any) {
                 console.error("Error loading data from Google Sheet:", error);
@@ -2480,6 +2597,10 @@ const AppContainer = () => {
             }
         };
         fetchData();
+        const onlineHandler = () => { drainQueue(); };
+        window.addEventListener('online', onlineHandler);
+        const interval = setInterval(drainQueue, 30000);
+        return () => { window.removeEventListener('online', onlineHandler); clearInterval(interval); };
     }, [currentUser]);
     
     const handleAddPlate = async (plate: string) => {
@@ -2489,59 +2610,20 @@ const AppContainer = () => {
         }
 
         setAppData(prev => ({ ...prev, plates: [...prev.plates, plate] }));
-        
-        try {
-            const response = await fetch(GOOGLE_SHEET_URL, {
-                method: 'POST',
-                body: JSON.stringify({ dataType: 'add_plate', plate, username: currentUser }),
-            });
-            const result = await response.json();
-            if (result.status === 'error') {
-                setAppData(prev => ({ ...prev, plates: prev.plates.filter(p => p !== plate) }));
-                throw new Error(result.message);
-            }
-            setToastMessage('✅ Kennzeichen hinzugefügt!');
-        } catch(e: any) {
-             setAppData(prev => ({ ...prev, plates: prev.plates.filter(p => p !== plate) }));
-             throw e;
-        }
+        persistLocalData(currentUser, { plates: [...appData.plates, plate] });
+        const op: SyncOp = { id: new Date().toISOString() + Math.random().toString(36).substr(2,9), type: 'add_plate', username: currentUser, payload: { plate } };
+        const ok = await enqueueOp(op);
+        setToastMessage(ok ? '✅ Kennzeichen hinzugefügt!' : '📥 Offline gespeichert – wird synchronisiert.');
     };
 
     const handleDeletePlate = async (plate: string) => {
         if (!currentUser) throw new Error("Nicht angemeldet.");
         
-        const originalPlates = appData.plates;
         setAppData(prev => ({ ...prev, plates: prev.plates.filter(p => p !== plate) }));
-        
-        try {
-            const response = await fetch(GOOGLE_SHEET_URL, {
-                method: 'POST',
-                body: JSON.stringify({ dataType: 'delete_plate', plate, username: currentUser }),
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP-Fehler: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            console.log('Delete plate response:', result);
-            
-            if (result.status === 'error') {
-                setAppData(prev => ({ ...prev, plates: originalPlates }));
-                throw new Error(result.message || 'Fehler beim Löschen des Kennzeichens.');
-            }
-            
-            if (result.status !== 'success' && !result.status?.includes('gelöscht')) {
-                setAppData(prev => ({ ...prev, plates: originalPlates }));
-                throw new Error('Unerwartete Antwort vom Server.');
-            }
-            
-            setToastMessage('✅ Kennzeichen gelöscht!');
-        } catch(e: any) {
-            setAppData(prev => ({ ...prev, plates: originalPlates }));
-            console.error('Error deleting plate:', e);
-            throw e;
-        }
+        persistLocalData(currentUser, { plates: appData.plates.filter(p => p !== plate) });
+        const op: SyncOp = { id: new Date().toISOString() + Math.random().toString(36).substr(2,9), type: 'delete_plate', username: currentUser, payload: { plate } };
+        const ok = await enqueueOp(op);
+        setToastMessage(ok ? '✅ Kennzeichen gelöscht!' : '📥 Offline gespeichert – wird synchronisiert.');
     };
 
     const handleLogin = async (username: string, password: string) => {

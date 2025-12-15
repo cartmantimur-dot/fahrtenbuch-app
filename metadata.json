@@ -1,0 +1,5 @@
+{
+  "name": "Fahrtenbuch",
+  "description": "Eine App zum Erfassen von Fahrten.",
+  "requestFramePermissions": []
+}

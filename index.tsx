@@ -2566,7 +2566,7 @@ const App = ({ username, initialData, onLogout, plates, onSwitchToBoss, canSwitc
                         {canSwitchRoles && onSwitchToBoss && (
                             <button className="header-btn fc-koeln" onClick={onSwitchToBoss}>Chefansicht</button>
                         )}
-                        {username.toLowerCase() === 'franco' && (
+                        {['franco', 'angelo'].includes(username.toLowerCase()) && (
                             <button className="header-btn" onClick={() => setIsRentModalOpen(true)}>Auto verleihen</button>
                         )}
                         <button className="header-btn" onClick={() => setIsArchiveOpen(true)}>Archiv</button>

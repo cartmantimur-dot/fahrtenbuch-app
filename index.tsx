@@ -1578,7 +1578,6 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
                     <div className="header-content">
                         <button className="header-btn" onClick={() => setShowRentals(false)}>Zurück</button>
                         <h1 style={{ fontSize: '1.2rem', textAlign: 'center' }}>Autoverleih Übersicht</h1>
-                        <button className="header-btn" onClick={() => setIsRentModalOpen(true)}>+ Verleihen</button>
                         <button className="logout-btn" onClick={onLogout}>Logout</button>
                     </div>
                 </header>
@@ -1618,6 +1617,13 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
                         )}
                     </div>
                 </main>
+                <RentCarModal
+                    isOpen={isRentModalOpen}
+                    onClose={() => setIsRentModalOpen(false)}
+                    onSave={async (r) => { onRentalAdded(r); setIsRentModalOpen(false); setToastMessage('✅ Auto verliehen!'); }}
+                    plates={plates}
+                />
+                <Toast message={toastMessage} onClear={() => setToastMessage('')} />
             </>
         );
     }
@@ -1949,7 +1955,7 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
             <RentCarModal
                 isOpen={isRentModalOpen}
                 onClose={() => setIsRentModalOpen(false)}
-                onSave={(r) => { onRentalAdded(r); setIsRentModalOpen(false); setToastMessage('✅ Auto verliehen!'); }}
+                onSave={async (r) => { onRentalAdded(r); setIsRentModalOpen(false); setToastMessage('✅ Auto verliehen!'); }}
                 plates={plates}
             />
             <AssignTripModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} drivers={drivers} onTripAssigned={handleTripAssigned} />
@@ -1959,6 +1965,7 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
                     <div className="header-actions">
                         <button className="header-btn" onClick={() => setShowSettlements(true)}>Abrechnungen</button>
                         <button className="header-btn" onClick={() => setShowRentals(true)}>Autoverleih</button>
+                        <button className="header-btn" onClick={() => setIsRentModalOpen(true)}>Auto verleihen</button>
                         <button className="header-btn" onClick={() => setIsManagePlatesModalOpen(true)}>Kennzeichen</button>
                         <button className="header-btn" onClick={() => setIsCreateUserModalOpen(true)}>Fahrer anlegen</button>
                         {onSwitchToUser && (

@@ -1417,7 +1417,8 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
     onAddPlate: (plate: string) => Promise<void>,
     onDeletePlate: (plate: string) => Promise<void>,
     onSwitchToUser?: () => void,
-    onCreateUser: (username: string, password: string) => Promise<void>
+    onCreateUser: (username: string, password: string) => Promise<void>,
+    onRentalAdded: (rental: CarRental) => void
 }) => {
     const [detailView, setDetailView] = useState<{
         monthKey: string;
@@ -1427,6 +1428,7 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [isManagePlatesModalOpen, setIsManagePlatesModalOpen] = useState(false);
     const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
+    const [isRentModalOpen, setIsRentModalOpen] = useState(false);
     const [cockpitTrips, setCockpitTrips] = useState<AssignedTrip[]>(initialAssignedTrips);
     const [toastMessage, setToastMessage] = useState('');
 
@@ -1576,6 +1578,7 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
                     <div className="header-content">
                         <button className="header-btn" onClick={() => setShowRentals(false)}>Zurück</button>
                         <h1 style={{ fontSize: '1.2rem', textAlign: 'center' }}>Autoverleih Übersicht</h1>
+                        <button className="header-btn" onClick={() => setIsRentModalOpen(true)}>+ Verleihen</button>
                         <button className="logout-btn" onClick={onLogout}>Logout</button>
                     </div>
                 </header>
@@ -1942,6 +1945,12 @@ const BossView = ({ trips, expenses = [], rentals = [], drivers, initialAssigned
                 isOpen={isCreateUserModalOpen}
                 onClose={() => setIsCreateUserModalOpen(false)}
                 onCreate={onCreateUser}
+            />
+            <RentCarModal
+                isOpen={isRentModalOpen}
+                onClose={() => setIsRentModalOpen(false)}
+                onSave={(r) => { onRentalAdded(r); setIsRentModalOpen(false); setToastMessage('✅ Auto verliehen!'); }}
+                plates={plates}
             />
             <AssignTripModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} drivers={drivers} onTripAssigned={handleTripAssigned} />
             <header>
@@ -3106,6 +3115,7 @@ const AppContainer = () => {
             onDeletePlate={handleDeletePlate}
             onSwitchToUser={switchToUserView}
             onCreateUser={handleBossCreateUser} // Use specialized function that doesn't auto-login
+            onRentalAdded={(r) => setAppData(prev => ({ ...prev, rentals: [r, ...(prev.rentals || [])] }))}
         />;
     }
 

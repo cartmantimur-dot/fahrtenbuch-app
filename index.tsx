@@ -1387,7 +1387,7 @@ const CreateUserModal = ({ isOpen, onClose, onCreate }: {
                             placeholder="Passwort vergeben"
                         />
                     </div>
-                    
+
                     {error && <p className="auth-error">{error}</p>}
                     {success && <p className="success-text" style={{ color: 'green', marginBottom: '1rem' }}>{success}</p>}
 
@@ -3026,7 +3026,7 @@ const AppContainer = () => {
         setCurrentUser(username);
     };
 
-    const handleRegister = async (username: string, password: string) => {
+    const performRegistration = async (username: string, password: string) => {
         if (!GOOGLE_SHEET_URL) throw new Error("App ist nicht konfiguriert.");
 
         const response = await fetch(GOOGLE_SHEET_URL, {
@@ -3040,8 +3040,17 @@ const AppContainer = () => {
         if (result.status === 'error') {
             throw new Error(result.message);
         }
+        return result;
+    };
 
+    const handleRegister = async (username: string, password: string) => {
+        await performRegistration(username, password);
         await handleLogin(username, password);
+    };
+
+    const handleBossCreateUser = async (username: string, password: string) => {
+        await performRegistration(username, password);
+        // No auto-login here, so boss stays logged in
     };
 
     const handleLogout = () => {
@@ -3096,7 +3105,7 @@ const AppContainer = () => {
             onAddPlate={handleAddPlate}
             onDeletePlate={handleDeletePlate}
             onSwitchToUser={switchToUserView}
-            onCreateUser={handleRegister} // Using existing handleRegister logic for admin user creation
+            onCreateUser={handleBossCreateUser} // Use specialized function that doesn't auto-login
         />;
     }
 

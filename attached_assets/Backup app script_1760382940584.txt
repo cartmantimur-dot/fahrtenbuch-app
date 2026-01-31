@@ -1,0 +1,393 @@
+// Google Apps Script Code v14.3 (Implementierung von Soft-Delete für Kennzeichen)
+
+const TRIPS_SHEET_NAME = "Fahrten";
+const EXPENSES_SHEET_NAME = "Ausgaben";
+const USERS_SHEET_NAME = "Benutzer";
+const ASSIGNED_TRIPS_SHEET_NAME = "ZugewieseneFahrten";
+const SUPPORT_TICKETS_SHEET_NAME = "Support-Tickets";
+const PLATES_SHEET_NAME = "Kennzeichen";
+const BOSS_USERNAME = "chef";
+const ADMIN_EMAIL = "cartmantimur@gmail.com";
+
+// HILFSFUNKTION: Findet ein Blatt unabhängig von Groß-/Kleinschreibung
+function getSheetByNameCaseInsensitive(ss, name) {
+  const sheets = ss.getSheets();
+  for (let i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().toLowerCase() === name.toLowerCase()) {
+      return sheets[i];
+    }
+  }
+  return null;
+}
+
+// ===============================================================
+// GET ROUTER
+// ===============================================================
+function doGet(e) {
+  try {
+    const { action, user, pass } = e.parameter;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    switch (action) {
+      case 'login': return handleLogin(user, pass);
+      case 'getData': if (!user) return createErrorResponse("Benutzername fehlt."); return handleGetData(ss, user);
+      case 'getCockpitData': if (user.toLowerCase() !== BOSS_USERNAME) return createErrorResponse("Zugriff verweigert."); return createSuccessResponse({ assignedTrips: getAllAssignedTrips(ss) });
+      default: return createErrorResponse("Unbekannte GET-Aktion.");
+    }
+  } catch (error) {
+    return createErrorResponse(error.toString());
+  }
+}
+
+// ===============================================================
+// POST ROUTER
+// ===============================================================
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) return createErrorResponse("Keine Daten in der POST-Anfrage empfangen.");
+    const payload = JSON.parse(e.postData.contents);
+    if (!payload || !payload.dataType) return createErrorResponse("Ungültige Payload-Struktur: dataType fehlt.");
+    
+    const { dataType } = payload;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    switch(dataType) {
+      case 'user_register': return handleUserRegistration(ss, payload.username, payload.password);
+      case 'trip': handleTripData(ss, payload); return createSuccessResponse({ status: 'Fahrt gespeichert' });
+      case 'expense': handleExpenseData(ss, payload); return createSuccessResponse({ status: 'Ausgabe gespeichert' });
+      case 'assign_trip': handleAssignTrip(ss, payload); return createSuccessResponse({ status: 'Fahrt zugewiesen' });
+      case 'update_assigned_trip_status': return handleUpdateAssignedTripStatus(ss, payload.id, payload.status);
+      case 'remove_assigned_trip': handleRemoveAssignedTrip(ss, payload.id); return createSuccessResponse({ status: 'Zuweisung entfernt' });
+      case 'support_ticket': return handleSupportTicket(ss, payload);
+      case 'add_plate': return handleAddPlate(ss, payload);
+      case 'delete_plate': return handleDeletePlate(ss, payload);
+      default: return createErrorResponse("Unbekannter POST-Datentyp: " + dataType);
+    }
+  } catch (error) {
+    console.error("Fehler in doPost:", error.toString(), "Stack:", error.stack, "Empfangener Inhalt:", e.postData ? e.postData.contents : "Kein postData");
+    return createErrorResponse("Script-Fehler: " + error.toString());
+  }
+}
+
+// ===============================================================
+// KENNZEICHEN-FUNKTIONEN (ANGEPASST FÜR SOFT-DELETE)
+// ===============================================================
+
+function getPlates(ss) {
+    let sheet = getSheetByNameCaseInsensitive(ss, PLATES_SHEET_NAME);
+    if (!sheet) {
+        sheet = ss.insertSheet(PLATES_SHEET_NAME);
+        sheet.appendRow(["Kennzeichen", "Status"]);
+        sheet.getRange("A1:B1").setFontWeight("bold");
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return [];
+
+    const headers = data[0].map(h => String(h).toLowerCase().trim());
+    const plateCol = headers.indexOf("kennzeichen");
+    const statusCol = headers.indexOf("status");
+    if (plateCol === -1 || statusCol === -1) return [];
+
+    return data.slice(1)
+               .filter(row => row.length > statusCol && String(row[statusCol]).trim().toLowerCase() === 'aktiv')
+               .map(row => row[plateCol])
+               .filter(plate => plate);
+}
+
+function handleAddPlate(ss, payload) {
+    const { plate, username } = payload;
+    if (username.toLowerCase() !== BOSS_USERNAME) return createErrorResponse("Zugriff verweigert.");
+    if (!plate || typeof plate !== 'string' || plate.trim() === '') return createErrorResponse("Ungültiges Kennzeichen übergeben.");
+
+    let sheet = getSheetByNameCaseInsensitive(ss, PLATES_SHEET_NAME);
+    if (!sheet) {
+        sheet = ss.insertSheet(PLATES_SHEET_NAME);
+        sheet.appendRow(["Kennzeichen", "Status"]);
+        sheet.getRange("A1:B1").setFontWeight("bold");
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).toLowerCase().trim());
+    const plateColIndex = headers.indexOf("kennzeichen");
+    const statusColIndex = headers.indexOf("status");
+
+    if (plateColIndex === -1 || statusColIndex === -1) {
+      return createErrorResponse("Die Spalten 'Kennzeichen' und/oder 'Status' wurden nicht gefunden.");
+    }
+
+    const plateToAdd = plate.trim().toUpperCase();
+    
+    for (let i = 1; i < data.length; i++) {
+        if (data.length <= i || data[i].length <= plateColIndex) continue;
+        const currentPlate = String(data[i][plateColIndex]).trim().toUpperCase();
+        if (currentPlate === plateToAdd) {
+            const currentStatus = String(data[i][statusColIndex]).trim().toLowerCase();
+            if (currentStatus === 'aktiv') {
+                return createErrorResponse("Dieses Kennzeichen ist bereits aktiv.");
+            } else {
+                sheet.getRange(i + 1, statusColIndex + 1).setValue("Aktiv");
+                return createSuccessResponse({ status: 'Kennzeichen reaktiviert' });
+            }
+        }
+    }
+
+    const newRow = new Array(headers.length).fill('');
+    newRow[plateColIndex] = plateToAdd;
+    newRow[statusColIndex] = "Aktiv";
+    sheet.appendRow(newRow);
+
+    return createSuccessResponse({ status: 'Kennzeichen hinzugefügt' });
+}
+
+function handleDeletePlate(ss, payload) {
+    const { plate, username } = payload;
+    if (username.toLowerCase() !== BOSS_USERNAME) return createErrorResponse("Zugriff verweigert.");
+    if (!plate) return createErrorResponse("Kein Kennzeichen zum Löschen angegeben.");
+
+    const sheet = getSheetByNameCaseInsensitive(ss, PLATES_SHEET_NAME);
+    if (!sheet) return createErrorResponse("Kennzeichen-Tabelle nicht gefunden.");
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).toLowerCase().trim());
+    const plateColIndex = headers.indexOf("kennzeichen");
+    const statusColIndex = headers.indexOf("status");
+
+    if (plateColIndex === -1 || statusColIndex === -1) {
+      return createErrorResponse("Die Spalten 'Kennzeichen' und/oder 'Status' wurden nicht gefunden.");
+    }
+
+    const plateToDeactivate = plate.trim().toLowerCase();
+    
+    for (let i = 1; i < data.length; i++) {
+        if (data.length <= i || data[i].length <= plateColIndex) continue;
+        if (String(data[i][plateColIndex]).trim().toLowerCase() === plateToDeactivate) {
+            sheet.getRange(i + 1, statusColIndex + 1).setValue("Gelöscht");
+            return createSuccessResponse({ status: 'Kennzeichen als gelöscht markiert' });
+        }
+    }
+    
+    return createErrorResponse("Kennzeichen nicht gefunden.");
+}
+
+
+// ===============================================================
+// HANDLER & DATA FUNCTIONS (REST IST UNVERÄNDERT)
+// ===============================================================
+
+function handleGetData(ss, username) {
+    const trips = readSheetData(ss, TRIPS_SHEET_NAME, username, mapTripRow);
+    const expenses = readSheetData(ss, EXPENSES_SHEET_NAME, username, mapExpenseRow);
+    const plates = getPlates(ss);
+    let assignedTrips = [], drivers = [];
+
+    if (username.toLowerCase() === BOSS_USERNAME) {
+        drivers = getDriverList(ss);
+        assignedTrips = getAllAssignedTrips(ss);
+    } else {
+        assignedTrips = readSheetData(ss, ASSIGNED_TRIPS_SHEET_NAME, username, mapAssignedTripRow);
+    }
+    return createSuccessResponse({ trips, expenses, assignedTrips, drivers, plates });
+}
+
+function handleSupportTicket(ss, payload) {
+  const { username, message, attachedTripId } = payload;
+  try {
+    let sheet = ss.getSheetByName(SUPPORT_TICKETS_SHEET_NAME);
+    if (!sheet) {
+      sheet = ss.insertSheet(SUPPORT_TICKETS_SHEET_NAME);
+      const headers = ["Ticket-ID", "Zeitstempel", "Benutzer", "Nachricht", "Angehängte Fahrt-ID", "Status"];
+      sheet.appendRow(headers);
+      sheet.getRange("A1:F1").setFontWeight("bold");
+    }
+    const newTicketId = new Date().toISOString() + Math.random().toString(36).substr(2, 9);
+    sheet.appendRow([newTicketId, new Date(), username, message, attachedTripId || "", "Offen"]);
+
+    const subject = `Neues Support-Ticket von ${username}`;
+    let emailBody = `Ein neues Support-Ticket wurde von <b>${username}</b> erstellt.<br><br>`;
+    emailBody += `<b>Nachricht:</b><br>${message.replace(/\n/g, '<br>')}<br><br>`;
+
+    if (attachedTripId) {
+      const tripsSheet = ss.getSheetByName(TRIPS_SHEET_NAME);
+      const tripDetails = findTripDetailsById(tripsSheet, attachedTripId);
+      if (tripDetails) {
+        emailBody += `--- Angehängte Fahrt ---<br>`;
+        emailBody += `<b>Fahrt-ID:</b> ${tripDetails.id}<br>`;
+        emailBody += `<b>Start:</b> ${tripDetails.start}<br>`;
+        emailBody += `<b>Ziel:</b> ${tripDetails.destination}<br>`;
+        emailBody += `<b>Betrag:</b> ${tripDetails.amount} €<br>`;
+        emailBody += `<b>Datum:</b> ${new Date(tripDetails.id.substring(0, 24)).toLocaleString('de-DE')}<br>`;
+      } else {
+        emailBody += `<b>Angehängte Fahrt-ID:</b> ${attachedTripId} (Details konnten nicht gefunden werden).<br>`;
+      }
+    }
+    emailBody += "<br>Das Ticket wurde in der 'Support-Tickets' Tabelle protokolliert.";
+
+    MailApp.sendEmail({ to: ADMIN_EMAIL, subject: subject, htmlBody: emailBody });
+    return createSuccessResponse({ "status": "Ticket gesendet" });
+  } catch (error) {
+    return createErrorResponse(error.toString());
+  }
+}
+
+function findTripDetailsById(sheet, id) {
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).toLowerCase().trim());
+  const idCol = headers.indexOf("fahrt id");
+  const startCol = headers.indexOf("start");
+  const destCol = headers.indexOf("ziel");
+  const amountCol = headers.indexOf("betrag");
+  if (idCol === -1) return null;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idCol] === id) {
+      return { id: data[i][idCol], start: data[i][startCol], destination: data[i][destCol], amount: data[i][amountCol] };
+    }
+  }
+  return null;
+}
+
+function readSheetData(ss, sheetName, username, rowMapper) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return [];
+    const originalHeaders = data[0];
+    const userColumnIndex = originalHeaders.map(h => String(h).toLowerCase().trim()).indexOf(sheetName === ASSIGNED_TRIPS_SHEET_NAME ? "zugewiesenan" : "fahrer");
+    if (username.toLowerCase() === BOSS_USERNAME) {
+         if (sheetName === TRIPS_SHEET_NAME || sheetName === EXPENSES_SHEET_NAME) {
+            return data.slice(1).map(row => rowMapper(row, originalHeaders));
+        }
+        return [];
+    }
+    if (userColumnIndex === -1) return []; 
+    const filteredData = data.slice(1).filter(row => row[userColumnIndex] && (String(row[userColumnIndex]).toLowerCase() === username.toLowerCase()));
+    return filteredData.map(row => rowMapper(row, originalHeaders));
+}
+
+function handleUpdateAssignedTripStatus(ss, tripId, status) {
+    const sheet = ss.getSheetByName(ASSIGNED_TRIPS_SHEET_NAME);
+    if (!sheet) return createErrorResponse("Zuweisungs-Tabelle nicht gefunden.");
+    const rowIndex = findRowById(sheet, tripId, 0);
+    if (rowIndex === -1) return createErrorResponse("Zugewiesene Fahrt nicht gefunden.");
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const statusColumnIndex = headers.map(h => String(h).toLowerCase().trim()).indexOf("status") + 1;
+    if (statusColumnIndex > 0) {
+        sheet.getRange(rowIndex, statusColumnIndex).setValue(status);
+        return createSuccessResponse({ "status": "Status aktualisiert" });
+    }
+    return createErrorResponse("Die 'Status'-Spalte wurde nicht gefunden.");
+}
+
+function handleLogin(username, password) {
+    if (!username || !password) return createErrorResponse("Benutzername oder Passwort fehlt.");
+    if (username.toLowerCase() === BOSS_USERNAME && password === 'chef123') return createSuccessResponse({ loggedIn: true });
+    const usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(USERS_SHEET_NAME);
+    if (!usersSheet) return createErrorResponse("Benutzer-Tabelle nicht gefunden.");
+    const data = usersSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0].toLowerCase() === username.toLowerCase() && String(data[i][1]) === password) {
+            return createSuccessResponse({ loggedIn: true });
+        }
+    }
+    return createErrorResponse("Benutzername oder Passwort ist falsch.");
+}
+
+function getDriverList(ss) {
+    const sheet = ss.getSheetByName(USERS_SHEET_NAME);
+    if (!sheet) return [];
+    return sheet.getDataRange().getValues().slice(1).map(row => row[0]).filter(name => name.toLowerCase() !== BOSS_USERNAME);
+}
+
+function handleAssignTrip(ss, tripData) {
+    let sheet = ss.getSheetByName(ASSIGNED_TRIPS_SHEET_NAME);
+    if (!sheet) {
+        sheet = ss.insertSheet(ASSIGNED_TRIPS_SHEET_NAME);
+        const headers = ["ID", "ZugewiesenAn", "Start", "Ziel", "Betrag", "Notizen", "Abholzeit", "Status"];
+        sheet.appendRow(headers);
+        sheet.getRange("A1:H1").setFontWeight("bold");
+    }
+    const newId = new Date().toISOString() + Math.random().toString(36).substr(2, 9);
+    sheet.appendRow([ newId, tripData.assignTo, tripData.start, tripData.destination, tripData.amount, tripData.notes, tripData.pickupTime, 'pending' ]);
+}
+
+function handleRemoveAssignedTrip(ss, tripId) {
+    const sheet = ss.getSheetByName(ASSIGNED_TRIPS_SHEET_NAME);
+    if (!sheet) return;
+    const rowIndex = findRowById(sheet, tripId, 0);
+    if (rowIndex !== -1) sheet.deleteRow(rowIndex);
+}
+
+function getAllAssignedTrips(ss) {
+    const sheet = ss.getSheetByName(ASSIGNED_TRIPS_SHEET_NAME);
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return [];
+    const headers = data[0];
+    return data.slice(1).map(row => mapAssignedTripRow(row, headers));
+}
+
+function handleUserRegistration(ss, username, password) { let sheet = ss.getSheetByName(USERS_SHEET_NAME); if (!sheet) { sheet = ss.insertSheet(USERS_SHEET_NAME); sheet.appendRow(["Username", "Password"]); sheet.getRange("A1:B1").setFontWeight("bold"); sheet.appendRow([BOSS_USERNAME, "chef123"]); } const data = sheet.getDataRange().getValues(); for (let i = 1; i < data.length; i++) { if (data[i][0].toLowerCase() === username.toLowerCase()) { return createErrorResponse("Benutzername bereits vergeben."); } } sheet.appendRow([username, password]); return createSuccessResponse({ registered: true }); }
+
+function handleTripData(ss, tripData) {
+    let sheet = ss.getSheetByName(TRIPS_SHEET_NAME);
+    if (!sheet) {
+        sheet = ss.insertSheet(TRIPS_SHEET_NAME);
+        const headers = ["Letzte Änderung", "Fahrt ID", "Fahrer", "Kennzeichen", "Start", "Ziel", "Betrag", "Zahlungsart", "Fahreranzahl", "Ich habe kassiert", "Abgerechnet", "Notizen", "Wurde Bearbeitet", "Bearbeitungsdatum", "Original Start", "Original Ziel", "Original Betrag", "Original Zahlungsart", "Original Fahreranzahl", "Original Ich habe kassiert", "Original Notizen"];
+        sheet.appendRow(headers);
+        sheet.getRange("A1:U1").setFontWeight("bold");
+    }
+    const rowIndex = findRowById(sheet, tripData.id, 1);
+
+    const rowData = [
+        new Date(), tripData.id, tripData.username, tripData.licensePlate, tripData.start, tripData.destination, tripData.payment.amount, tripData.payment.type, tripData.numberOfDrivers, tripData.iCollectedPayment, tripData.isSettled, tripData.notes || "",
+        tripData.wurdeBearbeitet || false,
+        tripData.wurdeBearbeitet ? new Date(tripData.bearbeitungsdatum) : "",
+        tripData.wurdeBearbeitet ? tripData.originalStart : "",
+        tripData.wurdeBearbeitet ? tripData.originalZiel : "",
+        tripData.wurdeBearbeitet ? tripData.originalBetrag : "",
+        tripData.wurdeBearbeitet ? tripData.originalZahlungsart : "",
+        tripData.wurdeBearbeitet ? tripData.originalFahreranzahl : "",
+        tripData.wurdeBearbeitet ? tripData.originalIchHabeKassiert : "",
+        tripData.wurdeBearbeitet ? tripData.originalNotizen : ""
+    ];
+
+    if (rowIndex !== -1) {
+        sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+        sheet.appendRow(rowData);
+    }
+}
+
+function handleExpenseData(ss, expenseData) { let sheet = ss.getSheetByName(EXPENSES_SHEET_NAME); if (!sheet) { sheet = ss.insertSheet(EXPENSES_SHEET_NAME); const headers = ["Letzte Änderung", "Ausgabe ID", "Fahrer", "Beschreibung", "Betrag", "Erstattet"]; sheet.appendRow(headers); sheet.getRange("A1:F1").setFontWeight("bold"); } const rowIndex = findRowById(sheet, expenseData.id, 1); const rowData = [new Date(), expenseData.id, expenseData.username, expenseData.description, expenseData.amount, expenseData.isReimbursed]; if (rowIndex !== -1) { sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]); } else { sheet.appendRow(rowData); } }
+
+// ===============================================================
+// HELPER, MAPPER & UTILITY FUNCTIONS
+// ===============================================================
+function mapAssignedTripRow(row, headers) { const get = (colName) => { const index = headers.map(h => String(h).toLowerCase().trim()).indexOf(colName.toLowerCase()); return index !== -1 ? row[index] : undefined; }; return { id: get("ID"), driver: get("ZugewiesenAn"), start: get("Start"), destination: get("Ziel"), amount: parseFloat(get("Betrag")) || 0, notes: get("Notizen"), pickupTime: get("Abholzeit"), status: get("Status") }; }
+
+function mapTripRow(row, headers) {
+    const get = (colName) => {
+        const index = headers.map(h => String(h).toLowerCase().trim()).indexOf(colName.toLowerCase());
+        return index !== -1 ? row[index] : undefined;
+    };
+    return {
+        id: get("Fahrt ID"),
+        username: get("Fahrer"),
+        licensePlate: get("Kennzeichen"),
+        start: get("Start"),
+        destination: get("Ziel"),
+        payment: {
+            amount: parseFloat(get("Betrag")) || 0,
+            type: get("Zahlungsart")
+        },
+        numberOfDrivers: parseInt(get("Fahreranzahl"), 10) || 1,
+        iCollectedPayment: get("Ich habe kassiert") === true,
+        isSettled: get("Abgerechnet") === true,
+        notes: get("Notizen") || "",
+        wurdeBearbeitet: get("Wurde Bearbeitet") === true
+    };
+}
+
+function mapExpenseRow(row, headers) { const get = (colName) => { const index = headers.map(h => String(h).toLowerCase().trim()).indexOf(colName.toLowerCase()); return index !== -1 ? row[index] : undefined; }; return { id: get("Ausgabe ID"), username: get("Fahrer"), description: get("Beschreibung"), amount: parseFloat(get("Betrag")) || 0, isReimbursed: get("Erstattet") === true }; }
+function findRowById(sheet, id, idColumnIndex) { if (!sheet) return -1; const data = sheet.getDataRange().getValues(); for (let i = 1; i < data.length; i++) { if (data[i][idColumnIndex] === id) { return i + 1; } } return -1; }
+function createSuccessResponse(dataObject) { return ContentService.createTextOutput(JSON.stringify({ status: 'success', ...dataObject })).setMimeType(ContentService.MimeType.JSON); }
+function createErrorResponse(message) { return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: message })).setMimeType(ContentService.MimeType.JSON); }
